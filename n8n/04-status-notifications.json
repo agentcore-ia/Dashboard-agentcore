@@ -1,0 +1,66 @@
+{
+  "name": "Order Status Notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "order-status",
+        "options": {}
+      },
+      "id": "order-status-webhook",
+      "name": "Order Status Changed",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { status, order_number, customer_phone } = $json;\n\nconst messages = {\n  preparing: `⏳ *Pedido #${order_number}* — Sua comida está sendo preparada! Aguarde um momento 👨‍🍳`,\n  ready: `✅ *Pedido #${order_number}* — Seu pedido está pronto! Em breve nosso entregador buscará. 🛵`,\n  delivering: `🚴 *Pedido #${order_number}* — Seu pedido saiu para entrega!\\n\\nAcompanhe em tempo real: https://track.beastburgers.com/${order_number}`,\n  delivered: `🎉 *Pedido #${order_number}* — Entregue com sucesso!\\n\\nObrigado pela preferência! Deixe sua avaliação:\\n⭐ https://g.page/r/beast-burgers-review`,\n};\n\nreturn [{\n  phone: customer_phone,\n  message: messages[status] || null\n}];"
+      },
+      "id": "build-notification",
+      "name": "Build Notification Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [{ "value1": "={{ $json.message }}", "operation": "isNotEmpty" }]
+        }
+      },
+      "id": "should-notify",
+      "name": "Has Notification?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v19.0/{{ $env.WHATSAPP_PHONE_NUMBER_ID }}/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "messaging_product", "value": "whatsapp" },
+            { "name": "to", "value": "={{ $json.phone }}" },
+            { "name": "type", "value": "text" },
+            { "name": "text", "value": "={ \"body\": \"{{ $json.message }}\" }" }
+          ]
+        }
+      },
+      "id": "send-whatsapp",
+      "name": "Send WhatsApp Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 240]
+    }
+  ],
+  "connections": {
+    "Order Status Changed": { "main": [[{ "node": "Build Notification Message", "type": "main", "index": 0 }]] },
+    "Build Notification Message": { "main": [[{ "node": "Has Notification?", "type": "main", "index": 0 }]] },
+    "Has Notification?": { "main": [[{ "node": "Send WhatsApp Notification", "type": "main", "index": 0 }]] }
+  }
+}

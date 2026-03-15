@@ -1,0 +1,83 @@
+{
+  "name": "AI Agent Responder",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-trigger",
+        "options": {}
+      },
+      "id": "ai-webhook-trigger",
+      "name": "AI Trigger (from backend)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.BACKEND_URL }}/api/conversations/={{ $json.conversacion_id }}"
+      },
+      "id": "get-conversation",
+      "name": "Get Conversation History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build messages array for OpenAI from conversation history\nconst conversation = $json;\nconst messages = conversation.messages || [];\n\nconst openaiMessages = messages.slice(-20).map(m => ({\n  role: m.sender === 'customer' ? 'user' : 'assistant',\n  content: m.content\n}));\n\nreturn [{ openaiMessages: JSON.stringify(openaiMessages), phone: conversation.customer_phone }];"
+      },
+      "id": "build-context",
+      "name": "Build AI Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "gpt-4o" },
+            { "name": "messages", "value": "={{ JSON.parse($json.openaiMessages) }}" },
+            { "name": "max_tokens", "value": 1000 }
+          ]
+        }
+      },
+      "id": "openai-call",
+      "name": "OpenAI GPT-4o",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/conversations/={{ $('Get Conversation History').item.json.id }}/messages",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "content", "value": "={{ $json.choices[0].message.content }}" },
+            { "name": "sender", "value": "ai" }
+          ]
+        }
+      },
+      "id": "save-ai-message",
+      "name": "Save AI Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "AI Trigger (from backend)": { "main": [[{ "node": "Get Conversation History", "type": "main", "index": 0 }]] },
+    "Get Conversation History": { "main": [[{ "node": "Build AI Context", "type": "main", "index": 0 }]] },
+    "Build AI Context": { "main": [[{ "node": "OpenAI GPT-4o", "type": "main", "index": 0 }]] },
+    "OpenAI GPT-4o": { "main": [[{ "node": "Save AI Message", "type": "main", "index": 0 }]] }
+  }
+}

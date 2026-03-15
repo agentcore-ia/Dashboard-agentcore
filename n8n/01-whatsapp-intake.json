@@ -1,0 +1,81 @@
+{
+  "name": "WhatsApp AI - Message Intake",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.object }}",
+              "value2": "whatsapp_business_account"
+            }
+          ]
+        }
+      },
+      "id": "validate-waba",
+      "name": "Is WhatsApp Message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\nconst entry = body.entry?.[0];\nconst message = entry?.changes?.[0]?.value?.messages?.[0];\nconst contact = entry?.changes?.[0]?.value?.contacts?.[0];\n\nif (!message) return [];\n\nreturn [{\n  phone: message.from,\n  name: contact?.profile?.name || message.from,\n  message_id: message.id,\n  type: message.type,\n  content: message.type === 'text' ? message.text?.body : `[${message.type}]`,\n  timestamp: message.timestamp,\n}];"
+      },
+      "id": "parse-message",
+      "name": "Parse Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/api/webhook",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "phone", "value": "={{ $json.phone }}" },
+            { "name": "content", "value": "={{ $json.content }}" },
+            { "name": "message_id", "value": "={{ $json.message_id }}" }
+          ]
+        }
+      },
+      "id": "forward-to-backend",
+      "name": "Forward to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 240]
+    },
+    {
+      "parameters": { "respondWith": "text", "responseBody": "EVENT_RECEIVED" },
+      "id": "respond-ok",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 240]
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": { "main": [[{ "node": "Is WhatsApp Message?", "type": "main", "index": 0 }]] },
+    "Is WhatsApp Message?": { "main": [[{ "node": "Parse Message", "type": "main", "index": 0 }], [{ "node": "Respond 200", "type": "main", "index": 0 }]] },
+    "Parse Message": { "main": [[{ "node": "Forward to Backend", "type": "main", "index": 0 }]] },
+    "Forward to Backend": { "main": [[{ "node": "Respond 200", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
