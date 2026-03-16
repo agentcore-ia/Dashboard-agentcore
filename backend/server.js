@@ -40,6 +40,7 @@ app.use('/api/ai-config', aiConfigRouter);
 app.use('/api/n8n', n8nRouter);
 
 // Health check
+app.get('/', (req, res) => res.send('WhatsApp AI Backend is running'));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // Socket.io events
