@@ -44,7 +44,11 @@ io.on('connection', (socket) => {
   socket.on('join-restaurant', (id) => socket.join(`restaurant-${id}`));
 });
 
-const PORT = process.env.PORT || 3001;
+// ... (resto del código igual)
+
+// FORZAMOS EL PUERTO 3001 SIN IMPORTAR EL ENVIRONMENT
+const PORT = 3001; 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
+  console.log(`🚀 SERVIDOR FORZADO EN PUERTO ${PORT}`);
 });
+
