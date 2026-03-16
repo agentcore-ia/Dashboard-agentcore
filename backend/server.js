@@ -18,7 +18,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL || '*',
     methods: ['GET', 'POST'],
   },
 });
@@ -36,19 +36,17 @@ app.use('/api/webhook', webhookRouter);
 app.use('/api/ai-config', aiConfigRouter);
 app.use('/api/n8n', n8nRouter);
 
-// IMPORTANTE PARA EASYPANEL
-app.get('/', (req, res) => res.send('Backend OK'));
+// Health check para Easypanel
+app.get('/', (req, res) => res.send('🚀 Backend Agentcore OK'));
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
 io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
   socket.on('join-restaurant', (id) => socket.join(`restaurant-${id}`));
 });
 
-// ... (resto del código igual)
-
-// FORZAMOS EL PUERTO 3001 SIN IMPORTAR EL ENVIRONMENT
-const PORT = 3001; 
+// FORZAMOS EL PUERTO 3001 PARA SOLUCIONAR EL CONFLICTO CON EASYPANEL
+const PORT = 3001;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SERVIDOR FORZADO EN PUERTO ${PORT}`);
 });
-
