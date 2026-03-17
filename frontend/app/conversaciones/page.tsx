@@ -89,24 +89,12 @@ export default function ConversasPage() {
     <div className="flex h-full lg:h-screen w-full relative overflow-hidden" style={{ height: "calc(100vh - 56px)" }}>
       {/* Left: conversation list */}
       <div
-        className={`absolute inset-0 lg:static lg:flex lg:flex-col border-r transition-transform duration-300 z-10 lg:z-auto bg-gray-950 lg:bg-transparent ${
+        className={`absolute inset-0 lg:static lg:block border-r transition-transform duration-300 z-10 lg:z-auto bg-gray-950 lg:bg-transparent lg:w-[320px] lg:min-w-[320px] lg:translate-x-0 ${
           mobileView === "list" ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
-        style={{ width: "100%", background: "rgba(10,10,20,0.95)", borderColor: "rgba(255,255,255,0.07)" }}
+        style={{ background: "rgba(10,10,20,0.95)", borderColor: "rgba(255,255,255,0.07)" }}
       >
-        <style dangerouslySetInnerHTML={{__html: `
-          @media (min-width: 1024px) {
-            .conversations-list-container {
-              width: 320px !important;
-              min-width: 320px !important;
-              background: rgba(10,10,20,0.7) !important;
-            }
-          }
-          .conversations-list-container {
-             width: 100%;
-          }
-        `}} />
-        <div className="conversations-list-container h-full flex flex-col">
+        <div className="w-full h-full flex flex-col">
           {/* Header */}
           <div className="px-4 pt-5 pb-3">
             <div className="flex items-center justify-between mb-3">
@@ -179,19 +167,12 @@ export default function ConversasPage() {
 
       {/* Right: chat window */}
       <div 
-        className={`absolute inset-0 lg:static lg:flex lg:flex-col bg-gray-950 lg:bg-transparent transition-transform duration-300 z-20 lg:z-auto ${
+        className={`absolute inset-0 lg:static lg:flex lg:flex-1 bg-gray-950 lg:bg-transparent transition-transform duration-300 z-20 lg:z-auto lg:translate-x-0 ${
           mobileView === "chat" ? "translate-x-0 flex flex-col" : "translate-x-full lg:translate-x-0 hidden lg:flex lg:flex-col"
         }`} 
-        style={{ flex: 1, background: "rgba(8,8,14,0.98)" }}
+        style={{ background: "rgba(8,8,14,0.98)" }}
       >
-        <style dangerouslySetInnerHTML={{__html: `
-          @media (min-width: 1024px) {
-            .chat-container-bg {
-               background: rgba(8,8,14,0.8) !important;
-            }
-          }
-        `}} />
-        <div className="chat-container-bg flex flex-col h-full w-full">
+        <div className="flex flex-col h-full w-full" style={{ background: "rgba(8,8,14,0.8)" }}>
           {selected ? (
             <>
               {/* Chat header */}
