@@ -180,27 +180,27 @@ export default function PedidosPage() {
       </div>
 
       {/* Kanban */}
-      <div className="flex gap-4 overflow-x-auto pb-4 h-full" style={{ maxHeight: "calc(100vh - 120px)" }}>
+      <div className="flex gap-3 lg:gap-4 overflow-x-auto pb-4 h-full snap-x snap-mandatory" style={{ maxHeight: "calc(100vh - 120px)" }}>
         {COLUMNS.map(col => {
           const colOrders = byStatus(col.key);
           return (
-            <div key={col.key} className="kanban-col flex-shrink-0 w-72 flex flex-col">
+            <div key={col.key} className="kanban-col flex-shrink-0 w-[85vw] sm:w-80 lg:w-72 flex flex-col snap-center lg:snap-align-none">
               {/* Column header */}
               <div
-                className="flex items-center gap-2 px-4 py-3 rounded-t-xl"
+                className="flex items-center gap-2 px-3 lg:px-4 py-3 rounded-t-xl"
                 style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
               >
                 <span style={{ color: col.color }}>{col.icon}</span>
                 <span className="font-semibold text-sm">{col.label}</span>
                 <span
-                  className="ml-auto text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center"
+                  className="ml-auto text-[10px] lg:text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center"
                   style={{ background: `${col.color}22`, color: col.color }}
                 >
                   {colOrders.length}
                 </span>
               </div>
               {/* Cards */}
-              <div className="flex-1 overflow-y-auto p-3">
+              <div className="flex-1 overflow-y-auto p-2 lg:p-3 pb-20 lg:pb-3">
                 {colOrders.length === 0 ? (
                   <div className="flex items-center justify-center h-24 text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>
                     Sin pedidos

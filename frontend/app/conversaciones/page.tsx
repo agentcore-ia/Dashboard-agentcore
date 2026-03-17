@@ -48,6 +48,7 @@ export default function ConversasPage() {
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [aiActive, setAiActive] = useState(true);
+  const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -79,215 +80,244 @@ export default function ConversasPage() {
     ));
   };
 
+  const handleSelectConv = (conv: typeof DEMO_CONVERSATIONS[0]) => {
+    setSelected(conv);
+    setMobileView("chat");
+  };
+
   return (
-    <div className="flex h-screen" style={{ height: "100vh" }}>
+    <div className="flex h-full lg:h-screen w-full relative overflow-hidden" style={{ height: "calc(100vh - 56px)" }}>
       {/* Left: conversation list */}
       <div
-        className="flex flex-col border-r"
-        style={{ width: "320px", minWidth: "320px", background: "rgba(10,10,20,0.7)", borderColor: "rgba(255,255,255,0.07)" }}
+        className={`absolute inset-0 lg:static lg:flex lg:flex-col border-r transition-transform duration-300 z-10 lg:z-auto bg-gray-950 lg:bg-transparent ${
+          mobileView === "list" ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+        style={{ width: "100%", background: "rgba(10,10,20,0.95)", borderColor: "rgba(255,255,255,0.07)" }}
       >
-        {/* Header */}
-        <div className="px-4 pt-5 pb-3">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h1 className="font-bold text-base">Conversaciones</h1>
-              <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{filteredConvs.length} chats activos</p>
-            </div>
-            <button className="btn-ghost text-xs">
-              <Filter className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
-            <input
-              className="input-dark pl-8 text-sm"
-              placeholder="Buscar conversación..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2 mt-2">
-            <span className="text-xs font-medium px-2 py-1 rounded-lg" style={{ background: "rgba(249,115,22,0.15)", color: "#fb923c" }}>
-              Conversaciones {filteredConvs.length}
-            </span>
-          </div>
-        </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
-          {filteredConvs.map((conv, i) => {
-            const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
-            const isSelected = selected?.id === conv.id;
-            return (
-              <button
-                key={conv.id}
-                onClick={() => setSelected(conv)}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-100 ${
-                  isSelected
-                    ? "bg-white/8 border border-white/10"
-                    : "hover:bg-white/4"
-                }`}
-              >
-                {/* Avatar */}
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                  style={{ background: color + "33", color }}
-                >
-                  {getInitial(conv.customer_name)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium truncate">{conv.customer_name}</span>
-                    <span className="text-xs ml-2 flex-shrink-0" style={{ color: "rgba(255,255,255,0.35)" }}>
-                      {timeAgo(conv.last_message_at)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between mt-0.5 gap-1">
-                    <span className="text-xs truncate" style={{ color: "rgba(255,255,255,0.4)" }}>
-                      {conv.last_message || "..."}
-                    </span>
-                    {conv.ai_active ? (
-                      <span className="badge-ai flex-shrink-0 ml-1">IA Activa</span>
-                    ) : (
-                      <span className="badge-human flex-shrink-0 ml-1">Humano</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full dot-active flex-shrink-0" />
-                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>Activo</span>
-                  </div>
-                </div>
+        <style dangerouslySetInnerHTML={{__html: `
+          @media (min-width: 1024px) {
+            .conversations-list-container {
+              width: 320px !important;
+              min-width: 320px !important;
+              background: rgba(10,10,20,0.7) !important;
+            }
+          }
+          .conversations-list-container {
+             width: 100%;
+          }
+        `}} />
+        <div className="conversations-list-container h-full flex flex-col">
+          {/* Header */}
+          <div className="px-4 pt-5 pb-3">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h1 className="font-bold text-base">Conversaciones</h1>
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{filteredConvs.length} chats activos</p>
+              </div>
+              <button className="btn-ghost text-xs">
+                <Filter className="w-3.5 h-3.5" />
               </button>
-            );
-          })}
+            </div>
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
+              <input
+                className="input-dark pl-8 text-sm"
+                placeholder="Buscar conversación..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto px-2 space-y-0.5 pb-20 lg:pb-0">
+            {filteredConvs.map((conv, i) => {
+              const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+              const isSelected = selected?.id === conv.id;
+              return (
+                <button
+                  key={conv.id}
+                  onClick={() => handleSelectConv(conv)}
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-100 ${
+                    isSelected
+                      ? "bg-white/8 border border-white/10"
+                      : "hover:bg-white/4"
+                  }`}
+                >
+                  {/* Avatar */}
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                    style={{ background: color + "33", color }}
+                  >
+                    {getInitial(conv.customer_name)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium truncate">{conv.customer_name}</span>
+                      <span className="text-xs ml-2 flex-shrink-0" style={{ color: "rgba(255,255,255,0.35)" }}>
+                        {timeAgo(conv.last_message_at)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-0.5 gap-1">
+                      <span className="text-xs truncate text-white/50">
+                        {conv.last_message || "..."}
+                      </span>
+                      {conv.ai_active ? (
+                        <span className="badge-ai flex-shrink-0 ml-1">IA</span>
+                      ) : (
+                        <span className="badge-human flex-shrink-0 ml-1">Humano</span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Right: chat window */}
-      <div className="flex-1 flex flex-col" style={{ background: "rgba(8,8,14,0.8)" }}>
-        {selected ? (
-          <>
-            {/* Chat header */}
-            <div
-              className="flex items-center justify-between px-5 py-3 border-b"
-              style={{ borderColor: "rgba(255,255,255,0.07)" }}
-            >
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold"
-                  style={{ background: "#f9731633", color: "#fb923c" }}
-                >
-                  {getInitial(selected.customer_name)}
-                </div>
-                <div>
-                  <p className="font-semibold text-sm">{selected.customer_name}</p>
-                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{selected.customer_phone}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {aiActive ? (
-                  <span className="badge-ai">IA Activa</span>
-                ) : (
-                  <span className="badge-human">Humano</span>
-                )}
-                <button
-                  onClick={toggleAI}
-                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
-                    aiActive
-                      ? "bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30"
-                      : "bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30"
-                  }`}
-                >
-                  {aiActive ? "Tomar Control" : "Volver a IA"}
-                </button>
-                <button className="btn-ghost w-8 h-8 p-0 flex items-center justify-center">
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-              {messages.length === 0 && (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>No hay mensajes aún</p>
-                </div>
-              )}
-              {messages.map(msg => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.sender === "customer" ? "justify-start" : "justify-end"} fade-in`}
-                >
-                  <div
-                    className={`max-w-sm px-4 py-2.5 text-sm leading-relaxed ${
-                      msg.sender === "customer"
-                        ? "bubble-customer"
-                        : msg.sender === "ai"
-                        ? "bubble-ai"
-                        : "bubble-human"
-                    }`}
-                    style={{ whiteSpace: "pre-wrap" }}
+      <div 
+        className={`absolute inset-0 lg:static lg:flex lg:flex-col bg-gray-950 lg:bg-transparent transition-transform duration-300 z-20 lg:z-auto ${
+          mobileView === "chat" ? "translate-x-0 flex flex-col" : "translate-x-full lg:translate-x-0 hidden lg:flex lg:flex-col"
+        }`} 
+        style={{ flex: 1, background: "rgba(8,8,14,0.98)" }}
+      >
+        <style dangerouslySetInnerHTML={{__html: `
+          @media (min-width: 1024px) {
+            .chat-container-bg {
+               background: rgba(8,8,14,0.8) !important;
+            }
+          }
+        `}} />
+        <div className="chat-container-bg flex flex-col h-full w-full">
+          {selected ? (
+            <>
+              {/* Chat header */}
+              <div
+                className="flex items-center justify-between px-3 lg:px-5 py-3 border-b bg-gray-900/50 backdrop-blur-sm lg:bg-transparent"
+                style={{ borderColor: "rgba(255,255,255,0.07)", minHeight: "64px" }}
+              >
+                <div className="flex items-center gap-2 lg:gap-3">
+                  <button 
+                    onClick={() => setMobileView("list")}
+                    className="lg:hidden p-2 -ml-2 text-white/70 hover:text-white"
                   >
-                    {msg.sender !== "customer" && (
-                      <div className="flex items-center gap-1 mb-1">
-                        {msg.sender === "ai" ? (
-                          <><Bot className="w-3 h-3" style={{ color: "#fb923c" }} /><span className="text-xs font-medium" style={{ color: "#fb923c" }}>IA</span></>
-                        ) : (
-                          <><User className="w-3 h-3" style={{ color: "#60a5fa" }} /><span className="text-xs font-medium" style={{ color: "#60a5fa" }}>Agente</span></>
-                        )}
-                      </div>
-                    )}
-                    {msg.content}
-                    <div className="text-right mt-1">
-                      <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
-                        {new Date(msg.created_at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                  </button>
+                  <div
+                    className="w-8 h-8 lg:w-9 lg:h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                    style={{ background: "#f9731633", color: "#fb923c" }}
+                  >
+                    {getInitial(selected.customer_name)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm truncate">{selected.customer_name}</p>
+                    <p className="text-[10px] lg:text-xs truncate text-white/50">{selected.customer_phone}</p>
                   </div>
                 </div>
-              ))}
-              <div ref={bottomRef} />
-            </div>
-
-            {/* Input */}
-            <div
-              className="px-4 py-3 border-t"
-              style={{ borderColor: "rgba(255,255,255,0.07)" }}
-            >
-              <div className="flex items-center gap-2">
-                <button className="btn-ghost w-9 h-9 flex items-center justify-center p-0 flex-shrink-0">
-                  <Paperclip className="w-4 h-4" />
-                </button>
-                <input
-                  className="input-dark flex-1 text-sm"
-                  placeholder={aiActive ? "IA está respondiendo... (tome el control para escribir)" : "Escribe un mensaje..."}
-                  value={input}
-                  disabled={aiActive}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleSend()}
-                />
-                <button
-                  onClick={handleSend}
-                  disabled={!input.trim() || aiActive}
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-opacity"
-                  style={{
-                    background: input.trim() && !aiActive
-                      ? "linear-gradient(135deg,#f97316,#ef4444)"
-                      : "rgba(255,255,255,0.06)",
-                    opacity: !input.trim() || aiActive ? 0.4 : 1,
-                  }}
-                >
-                  <Send className="w-4 h-4 text-white" />
-                </button>
+                <div className="flex items-center gap-1.5 lg:gap-2 flex-shrink-0">
+                  <button
+                    onClick={toggleAI}
+                    className={`text-[10px] lg:text-xs px-2 lg:px-3 py-1.5 rounded-lg font-medium transition-all ${
+                      aiActive
+                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30"
+                        : "bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30"
+                    }`}
+                  >
+                    <span className="hidden sm:inline">{aiActive ? "Tomar Control" : "Volver a IA"}</span>
+                    <span className="sm:hidden">{aiActive ? "Control" : "Auto IA"}</span>
+                  </button>
+                  <button className="btn-ghost w-8 h-8 p-0 flex items-center justify-center">
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto px-4 lg:px-5 py-4 space-y-3 pb-20 lg:pb-4">
+                {messages.length === 0 && (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>No hay mensajes aún</p>
+                  </div>
+                )}
+                {messages.map(msg => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.sender === "customer" ? "justify-start" : "justify-end"} fade-in`}
+                  >
+                    <div
+                      className={`max-w-[85%] lg:max-w-sm px-3 lg:px-4 py-2.5 text-sm leading-relaxed ${
+                        msg.sender === "customer"
+                          ? "bubble-customer"
+                          : msg.sender === "ai"
+                          ? "bubble-ai"
+                          : "bubble-human"
+                      }`}
+                      style={{ whiteSpace: "pre-wrap" }}
+                    >
+                      {msg.sender !== "customer" && (
+                        <div className="flex items-center gap-1 mb-1">
+                          {msg.sender === "ai" ? (
+                            <><Bot className="w-3 h-3" style={{ color: "#fb923c" }} /><span className="text-xs font-medium" style={{ color: "#fb923c" }}>IA</span></>
+                          ) : (
+                            <><User className="w-3 h-3" style={{ color: "#60a5fa" }} /><span className="text-xs font-medium" style={{ color: "#60a5fa" }}>Agente</span></>
+                          )}
+                        </div>
+                      )}
+                      {msg.content}
+                      <div className="text-right mt-1">
+                        <span className="text-[10px] lg:text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+                          {new Date(msg.created_at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={bottomRef} />
+              </div>
+
+              {/* Input */}
+              <div
+                className="px-3 lg:px-4 py-3 border-t bg-gray-950 lg:bg-transparent absolute bottom-0 left-0 right-0 lg:static"
+                style={{ borderColor: "rgba(255,255,255,0.07)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <button className="btn-ghost w-9 h-9 flex items-center justify-center p-0 flex-shrink-0">
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                  <input
+                    className="input-dark flex-1 text-sm bg-white/5"
+                    placeholder={aiActive ? "IA hablando (tome control)" : "Mensaje..."}
+                    value={input}
+                    disabled={aiActive}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleSend()}
+                    style={{ fontSize: "16px" /* Prevents iOS zoom */ }}
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!input.trim() || aiActive}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-opacity"
+                    style={{
+                      background: input.trim() && !aiActive
+                        ? "linear-gradient(135deg,#f97316,#ef4444)"
+                        : "rgba(255,255,255,0.06)",
+                      opacity: !input.trim() || aiActive ? 0.4 : 1,
+                    }}
+                  >
+                    <Send className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center hidden lg:flex">
+              <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>Seleccione una conversación</p>
             </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>Seleccione una conversación</p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
