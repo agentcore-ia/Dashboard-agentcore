@@ -4,24 +4,24 @@ import { useState, useEffect, useRef } from "react";
 import { Search, Filter, Bot, User, Send, Paperclip, MoreVertical, Phone } from "lucide-react";
 
 const DEMO_CONVERSATIONS = [
-  { id: "00000000-0000-0000-0000-000000000020", customer_name: "Pedro Machado", customer_phone: "+5511987654321", last_message: "pode sim", last_message_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "1" },
-  { id: "00000000-0000-0000-0000-000000000021", customer_name: "Kaua Parizzi", customer_phone: "+5511976543210", last_message: "Cida", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000022", customer_name: "Natalia", customer_phone: "+18972544744", last_message: "18972544744", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000023", customer_name: "Vanessa Souza Santiago", customer_phone: "+5511965432109", last_message: "Pizza de 8 pedaços e coca 1.5", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000024", customer_name: "Kamila Vieira", customer_phone: "+5511954321098", last_message: "Eu finalizei o pedido, mas estranhei qu...", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000025", customer_name: "Vini", customer_phone: "+5511943210987", last_message: "Muito obrigado", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000026", customer_name: "Azeredo", customer_phone: "+5511932109876", last_message: "Já falei com o motoboy", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: false, status: "active", unread_count: "0" },
+  { id: "00000000-0000-0000-0000-000000000020", customer_name: "Pedro Machado", customer_phone: "+5511987654321", last_message: "Sí, por favor", last_message_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "1" },
+  { id: "00000000-0000-0000-0000-000000000021", customer_name: "Kaua Parizzi", customer_phone: "+5511976543210", last_message: "Gracias", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
+  { id: "00000000-0000-0000-0000-000000000022", customer_name: "Natalia", customer_phone: "+18972544744", last_message: "Confirmado", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
+  { id: "00000000-0000-0000-0000-000000000023", customer_name: "Vanessa Souza", customer_phone: "+5511965432109", last_message: "Quiero una hamburguesa doble", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
+  { id: "00000000-0000-0000-0000-000000000024", customer_name: "Kamila Vieira", customer_phone: "+5511954321098", last_message: "Ya realicé el pago", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
+  { id: "00000000-0000-0000-0000-000000000025", customer_name: "Vini", customer_phone: "+5511943210987", last_message: "Muchas gracias", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
+  { id: "00000000-0000-0000-0000-000000000026", customer_name: "Azeredo", customer_phone: "+5511932109876", last_message: "Hablé con el repartidor", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: false, status: "active", unread_count: "0" },
 ];
 
 const DEMO_MESSAGES = [
-  { id: "1", content: "Oi, quero pedir uma hamburguesa", sender: "customer", created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() },
-  { id: "2", content: "Olá Pedro! 👋 Bem-vindo à Beast Burgers!\n\n🍔 *Beast Classic* — R$ 32,90\n🍔 *Beast Double* — R$ 44,90\n🍔 *Beast Crispy* (frango) — R$ 29,90\n\nQual delas te agrada?", sender: "ai", created_at: new Date(Date.now() - 9 * 60 * 1000).toISOString() },
+  { id: "1", content: "Hola, quiero pedir una hamburguesa", sender: "customer", created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() },
+  { id: "2", content: "¡Hola Pedro! 👋 ¡Bienvenido a Beast Burgers!\n\n🍔 *Beast Classic* — $32.90\n🍔 *Beast Double* — $44.90\n🍔 *Beast Crispy* (pollo) — $29.90\n\n¿Cuál de ellas te gustaría probar hoy?", sender: "ai", created_at: new Date(Date.now() - 9 * 60 * 1000).toISOString() },
   { id: "3", content: "Beast Classic por favor", sender: "customer", created_at: new Date(Date.now() - 8 * 60 * 1000).toISOString() },
-  { id: "4", content: "Ótima escolha! 🔥\n\nQuer adicionar ao combo?\n🍟 Batata c/ Cheddar Bacon — R$ 22,90\n🥤 Refri 600ml — R$ 9,00\n\nOs dois juntos ficam só R$ 31,90!", sender: "ai", created_at: new Date(Date.now() - 7 * 60 * 1000).toISOString() },
-  { id: "5", content: "Sim, quero os dois", sender: "customer", created_at: new Date(Date.now() - 6 * 60 * 1000).toISOString() },
-  { id: "6", content: "📋 *Resumo do pedido:*\n\n1x Beast Classic — R$ 32,90\n1x Batata c/ Cheddar Bacon — R$ 22,90\n1x Refri 600ml — R$ 9,00\n\nSubtotal: R$ 64,80\nTaxa de entrega: R$ 5,00\n*TOTAL: R$ 69,80*\n\n📍 Av. Paulista, 1500, Apto 42\n\nForma de pagamento? (Cartão / Dinheiro / Pix)", sender: "ai", created_at: new Date(Date.now() - 3 * 60 * 1000).toISOString() },
-  { id: "7", content: "Cartão", sender: "customer", created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString() },
-  { id: "8", content: "pode sim", sender: "customer", created_at: new Date(Date.now() - 1 * 60 * 1000).toISOString() },
+  { id: "4", content: "¡Excelente elección! 🔥\n\n¿Quieres añadir un combo?\n🍟 Papas con Cheddar y Bacon — $22.90\n🥤 Refresco 600ml — $9.00\n\n¡Los dos juntos quedan por solo $31.90!", sender: "ai", created_at: new Date(Date.now() - 7 * 60 * 1000).toISOString() },
+  { id: "5", content: "Sí, quiero el combo", sender: "customer", created_at: new Date(Date.now() - 6 * 60 * 1000).toISOString() },
+  { id: "6", content: "📋 *Resumen de tu pedido:*\n\n1x Beast Classic — $32.90\n1x Papas con Cheddar y Bacon — $22.90\n1x Refresco 600ml — $9.00\n\nSubtotal: $64.80\nCosto de envío: $5.00\n*TOTAL: $69.80*\n\n📍 Av. Principal, 1500, Apto 42\n\n¿Forma de pago? (Tarjeta / Efectivo / Pix)", sender: "ai", created_at: new Date(Date.now() - 3 * 60 * 1000).toISOString() },
+  { id: "7", content: "Tarjeta", sender: "customer", created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString() },
+  { id: "8", content: "Sí, por favor", sender: "customer", created_at: new Date(Date.now() - 1 * 60 * 1000).toISOString() },
 ];
 
 function timeAgo(dateStr: string) {

@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --sidebar-width: 220px;
+  --sidebar-width: 240px;
+  --header-height: 60px;
 }
 
 * {
@@ -163,6 +164,24 @@
   background: linear-gradient(135deg, rgba(249,115,22,0.2), rgba(239,68,68,0.15));
   border: 1px solid rgba(249,115,22,0.3);
   color: #fb923c;
+}
+
+/* Responsive Helpers */
+@media (max-width: 1024px) {
+  .sidebar-collapsed {
+    transform: translateX(-100%);
+  }
+  .sidebar-open {
+    transform: translateX(0);
+  }
+}
+
+.mobile-overlay {
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  position: fixed;
+  inset: 0;
+  z-index: 40;
 }
 
 /* Progress bar */

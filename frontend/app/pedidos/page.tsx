@@ -17,12 +17,12 @@ const INITIAL_ORDERS: Order[] = [
   {
     id: "00000000-0000-0000-0000-000000000030", order_number: 260043,
     status: "new", customer_name: "Pedro Machado", customer_phone: "+5511987654321",
-    delivery_type: "delivery", payment_method: "card", address: "Av. Paulista, 1500, Apto 42",
+    delivery_type: "delivery", payment_method: "card", address: "Av. Principal, 1500, Apto 42",
     subtotal: 71.80, delivery_fee: 5.00, total: 76.80,
     items: [
-      { name: "Beast Classic", price: 32.90, quantity: 1, notes: "Ao ponto" },
-      { name: "Batata c/ Cheddar e Bacon - média", price: 29.90, quantity: 1 },
-      { name: "Refri 600ml", price: 9.00, quantity: 1 },
+      { name: "Beast Classic", price: 32.90, quantity: 1, notes: "Al punto" },
+      { name: "Papas con Cheddar y Bacon - mediana", price: 29.90, quantity: 1 },
+      { name: "Refresco 600ml", price: 9.00, quantity: 1 },
     ],
     created_at: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
   },
