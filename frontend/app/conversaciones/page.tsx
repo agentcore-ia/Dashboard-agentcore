@@ -1,28 +1,29 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Filter, Bot, User, Send, Paperclip, MoreVertical, Phone } from "lucide-react";
+import { Search, Filter, Bot, User, Send, Paperclip, MoreVertical } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 
-const DEMO_CONVERSATIONS = [
-  { id: "00000000-0000-0000-0000-000000000020", customer_name: "Pedro Machado", customer_phone: "+5511987654321", last_message: "Sí, por favor", last_message_at: new Date(Date.now() - 2 * 60 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "1" },
-  { id: "00000000-0000-0000-0000-000000000021", customer_name: "Kaua Parizzi", customer_phone: "+5511976543210", last_message: "Gracias", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000022", customer_name: "Natalia", customer_phone: "+18972544744", last_message: "Confirmado", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000023", customer_name: "Vanessa Souza", customer_phone: "+5511965432109", last_message: "Quiero una hamburguesa doble", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000024", customer_name: "Kamila Vieira", customer_phone: "+5511954321098", last_message: "Ya realicé el pago", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000025", customer_name: "Vini", customer_phone: "+5511943210987", last_message: "Muchas gracias", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: true, status: "active", unread_count: "0" },
-  { id: "00000000-0000-0000-0000-000000000026", customer_name: "Azeredo", customer_phone: "+5511932109876", last_message: "Hablé con el repartidor", last_message_at: new Date(Date.now() - 56 * 24 * 3600 * 1000).toISOString(), ai_active: false, status: "active", unread_count: "0" },
-];
+interface Conversation {
+  id: string;
+  customer_name: string;
+  customer_phone: string;
+  last_message: string | null;
+  last_message_at: string;
+  ai_active: boolean;
+  status: string;
+  unread_count: number;
+}
 
-const DEMO_MESSAGES = [
-  { id: "1", content: "Hola, quiero pedir una hamburguesa", sender: "customer", created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() },
-  { id: "2", content: "¡Hola Pedro! 👋 ¡Bienvenido a Beast Burgers!\n\n🍔 *Beast Classic* — $32.90\n🍔 *Beast Double* — $44.90\n🍔 *Beast Crispy* (pollo) — $29.90\n\n¿Cuál de ellas te gustaría probar hoy?", sender: "ai", created_at: new Date(Date.now() - 9 * 60 * 1000).toISOString() },
-  { id: "3", content: "Beast Classic por favor", sender: "customer", created_at: new Date(Date.now() - 8 * 60 * 1000).toISOString() },
-  { id: "4", content: "¡Excelente elección! 🔥\n\n¿Quieres añadir un combo?\n🍟 Papas con Cheddar y Bacon — $22.90\n🥤 Refresco 600ml — $9.00\n\n¡Los dos juntos quedan por solo $31.90!", sender: "ai", created_at: new Date(Date.now() - 7 * 60 * 1000).toISOString() },
-  { id: "5", content: "Sí, quiero el combo", sender: "customer", created_at: new Date(Date.now() - 6 * 60 * 1000).toISOString() },
-  { id: "6", content: "📋 *Resumen de tu pedido:*\n\n1x Beast Classic — $32.90\n1x Papas con Cheddar y Bacon — $22.90\n1x Refresco 600ml — $9.00\n\nSubtotal: $64.80\nCosto de envío: $5.00\n*TOTAL: $69.80*\n\n📍 Av. Principal, 1500, Apto 42\n\n¿Forma de pago? (Tarjeta / Efectivo / Pix)", sender: "ai", created_at: new Date(Date.now() - 3 * 60 * 1000).toISOString() },
-  { id: "7", content: "Tarjeta", sender: "customer", created_at: new Date(Date.now() - 2 * 60 * 1000).toISOString() },
-  { id: "8", content: "Sí, por favor", sender: "customer", created_at: new Date(Date.now() - 1 * 60 * 1000).toISOString() },
-];
+interface Message {
+  id: string;
+  conversacion_id: string;
+  content: string;
+  type: string;
+  sender: string;
+  created_at: string;
+  read: boolean;
+}
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -40,23 +41,173 @@ function getInitial(name: string) {
 }
 
 const AVATAR_COLORS = ["#f97316","#ef4444","#3b82f6","#8b5cf6","#14b8a6","#f59e0b","#ec4899"];
+const RESTAURANT_ID = '00000000-0000-0000-0000-000000000001';
 
 export default function ConversasPage() {
-  const [conversations, setConversations] = useState(DEMO_CONVERSATIONS);
-  const [selected, setSelected] = useState(DEMO_CONVERSATIONS[0]);
-  const [messages, setMessages] = useState(DEMO_MESSAGES);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selected, setSelected] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [aiActive, setAiActive] = useState(true);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
+  const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Load conversations from Supabase
   useEffect(() => {
+    async function fetchConversations() {
+      setLoading(true);
+      const { data: convs, error } = await supabase
+        .from('conversaciones')
+        .select(`
+          id, status, ai_active, last_message_at, created_at,
+          clientes!inner(name, phone)
+        `)
+        .eq('restaurant_id', RESTAURANT_ID)
+        .order('last_message_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching conversations:', error);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch last message and unread count for each conversation
+      const enrichedConvs: Conversation[] = await Promise.all(
+        (convs || []).map(async (c: any) => {
+          const { data: lastMsg } = await supabase
+            .from('mensajes')
+            .select('content')
+            .eq('conversacion_id', c.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          const { count } = await supabase
+            .from('mensajes')
+            .select('*', { count: 'exact', head: true })
+            .eq('conversacion_id', c.id)
+            .eq('read', false)
+            .eq('sender', 'customer');
+
+          const cliente = Array.isArray(c.clientes) ? c.clientes[0] : c.clientes;
+
+          return {
+            id: c.id,
+            customer_name: cliente?.name || 'Sin nombre',
+            customer_phone: cliente?.phone || '',
+            last_message: lastMsg?.content || null,
+            last_message_at: c.last_message_at,
+            ai_active: c.ai_active,
+            status: c.status,
+            unread_count: count || 0,
+          };
+        })
+      );
+
+      setConversations(enrichedConvs);
+      if (enrichedConvs.length > 0 && !selected) {
+        setSelected(enrichedConvs[0]);
+      }
+      setLoading(false);
+    }
+
+    fetchConversations();
+  }, []);
+
+  // Load messages when conversation changes
+  useEffect(() => {
+    if (!selected) return;
     setAiActive(selected.ai_active);
-    setMessages(selected.id === DEMO_CONVERSATIONS[0].id ? DEMO_MESSAGES : []);
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+
+    async function fetchMessages() {
+      const { data, error } = await supabase
+        .from('mensajes')
+        .select('*')
+        .eq('conversacion_id', selected!.id)
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Error fetching messages:', error);
+        return;
+      }
+      setMessages(data || []);
+
+      // Mark messages as read
+      await supabase
+        .from('mensajes')
+        .update({ read: true })
+        .eq('conversacion_id', selected!.id)
+        .eq('sender', 'customer')
+        .eq('read', false);
+    }
+
+    fetchMessages();
   }, [selected]);
 
+  // Subscribe to new messages in realtime
+  useEffect(() => {
+    const channel = supabase
+      .channel('realtime-mensajes')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'mensajes' },
+        (payload) => {
+          const newMsg = payload.new as Message;
+
+          // If the message belongs to the selected conversation, add it
+          if (selected && newMsg.conversacion_id === selected.id) {
+            setMessages(prev => {
+              // Avoid duplicates
+              if (prev.find(m => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+          }
+
+          // Update the conversation list (last message, unread count)
+          setConversations(prev =>
+            prev.map(c => {
+              if (c.id === newMsg.conversacion_id) {
+                return {
+                  ...c,
+                  last_message: newMsg.content,
+                  last_message_at: newMsg.created_at,
+                  unread_count: (selected && selected.id === c.id) ? c.unread_count : c.unread_count + 1,
+                };
+              }
+              return c;
+            }).sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime())
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'conversaciones' },
+        (payload) => {
+          const updated = payload.new as any;
+          setConversations(prev =>
+            prev.map(c =>
+              c.id === updated.id
+                ? { ...c, ai_active: updated.ai_active, status: updated.status, last_message_at: updated.last_message_at }
+                : c
+            )
+          );
+          // Update selected conversation's ai_active
+          if (selected && selected.id === updated.id) {
+            setAiActive(updated.ai_active);
+            setSelected(prev => prev ? { ...prev, ai_active: updated.ai_active } : prev);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selected]);
+
+  // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -66,23 +217,52 @@ export default function ConversasPage() {
          c.last_message?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-    const msg = { id: Date.now().toString(), content: input, sender: "human", created_at: new Date().toISOString() };
-    setMessages(prev => [...prev, msg]);
+  const handleSend = async () => {
+    if (!input.trim() || !selected) return;
+    const content = input.trim();
     setInput("");
+
+    // Insert message into Supabase
+    const { error } = await supabase.from('mensajes').insert({
+      conversacion_id: selected.id,
+      content,
+      type: 'text',
+      sender: 'human',
+    });
+
+    if (error) {
+      console.error('Error sending message:', error);
+      return;
+    }
+
+    // Update conversation timestamp and set AI inactive (human took over)
+    await supabase
+      .from('conversaciones')
+      .update({ last_message_at: new Date().toISOString(), ai_active: false })
+      .eq('id', selected.id);
   };
 
-  const toggleAI = () => {
-    setAiActive(prev => !prev);
+  const toggleAI = async () => {
+    if (!selected) return;
+    const newAiActive = !aiActive;
+    setAiActive(newAiActive);
+
+    await supabase
+      .from('conversaciones')
+      .update({ ai_active: newAiActive })
+      .eq('id', selected.id);
+
     setConversations(convs => convs.map(c =>
-      c.id === selected.id ? { ...c, ai_active: !c.ai_active } : c
+      c.id === selected.id ? { ...c, ai_active: newAiActive } : c
     ));
+    setSelected(prev => prev ? { ...prev, ai_active: newAiActive } : prev);
   };
 
-  const handleSelectConv = (conv: typeof DEMO_CONVERSATIONS[0]) => {
+  const handleSelectConv = (conv: Conversation) => {
     setSelected(conv);
     setMobileView("chat");
+    // Reset unread count
+    setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
 
   return (
@@ -120,47 +300,64 @@ export default function ConversasPage() {
 
           {/* List */}
           <div className="flex-1 overflow-y-auto px-2 space-y-0.5 pb-20 lg:pb-0">
-            {filteredConvs.map((conv, i) => {
-              const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
-              const isSelected = selected?.id === conv.id;
-              return (
-                <button
-                  key={conv.id}
-                  onClick={() => handleSelectConv(conv)}
-                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-100 ${
-                    isSelected
-                      ? "bg-white/8 border border-white/10"
-                      : "hover:bg-white/4"
-                  }`}
-                >
-                  {/* Avatar */}
-                  <div
-                    className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                    style={{ background: color + "33", color }}
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500"></div>
+              </div>
+            ) : filteredConvs.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-sm text-white/40">No hay conversaciones</p>
+              </div>
+            ) : (
+              filteredConvs.map((conv, i) => {
+                const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+                const isSelected = selected?.id === conv.id;
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => handleSelectConv(conv)}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-100 ${
+                      isSelected
+                        ? "bg-white/8 border border-white/10"
+                        : "hover:bg-white/4"
+                    }`}
                   >
-                    {getInitial(conv.customer_name)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium truncate">{conv.customer_name}</span>
-                      <span className="text-xs ml-2 flex-shrink-0" style={{ color: "rgba(255,255,255,0.35)" }}>
-                        {timeAgo(conv.last_message_at)}
-                      </span>
+                    {/* Avatar */}
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                      style={{ background: color + "33", color }}
+                    >
+                      {getInitial(conv.customer_name)}
                     </div>
-                    <div className="flex items-center justify-between mt-0.5 gap-1">
-                      <span className="text-xs truncate text-white/50">
-                        {conv.last_message || "..."}
-                      </span>
-                      {conv.ai_active ? (
-                        <span className="badge-ai flex-shrink-0 ml-1">IA</span>
-                      ) : (
-                        <span className="badge-human flex-shrink-0 ml-1">Humano</span>
-                      )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium truncate">{conv.customer_name}</span>
+                        <span className="text-xs ml-2 flex-shrink-0" style={{ color: "rgba(255,255,255,0.35)" }}>
+                          {timeAgo(conv.last_message_at)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5 gap-1">
+                        <span className="text-xs truncate text-white/50">
+                          {conv.last_message || "..."}
+                        </span>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {conv.unread_count > 0 && (
+                            <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center">
+                              {conv.unread_count}
+                            </span>
+                          )}
+                          {conv.ai_active ? (
+                            <span className="badge-ai flex-shrink-0 ml-1">IA</span>
+                          ) : (
+                            <span className="badge-human flex-shrink-0 ml-1">Humano</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </button>
-              );
-            })}
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
       </div>
