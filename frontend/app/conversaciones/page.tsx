@@ -1,5 +1,6 @@
 "use client";
 
+// Force update to ensure deployment: 2026-03-18 01:00
 import { useState, useEffect, useRef } from "react";
 import { Search, Filter, Bot, User, Send, Paperclip, MoreVertical } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
