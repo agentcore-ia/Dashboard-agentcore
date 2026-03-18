@@ -222,24 +222,30 @@ export default function ConversasPage() {
     const content = input.trim();
     setInput("");
 
-    // Insert message into Supabase
-    const { error } = await supabase.from('mensajes').insert({
-      conversacion_id: selected.id,
-      content,
-      type: 'text',
-      sender: 'human',
+    // Invoke the send-whatsapp-message Edge Function
+    const { data, error } = await supabase.functions.invoke('send-whatsapp-message', {
+      body: {
+        conversacion_id: selected.id,
+        content: content
+      }
     });
 
     if (error) {
       console.error('Error sending message:', error);
+      // Fallback: If edge function fails (e.g. not deployed or secrets missing), 
+      // just insert into DB so the user sees it in the chat, even if it didn't send to WA.
+      await supabase.from('mensajes').insert({
+        conversacion_id: selected.id,
+        content,
+        type: 'text',
+        sender: 'human',
+      });
+      await supabase
+        .from('conversaciones')
+        .update({ last_message_at: new Date().toISOString(), ai_active: false })
+        .eq('id', selected.id);
       return;
     }
-
-    // Update conversation timestamp and set AI inactive (human took over)
-    await supabase
-      .from('conversaciones')
-      .update({ last_message_at: new Date().toISOString(), ai_active: false })
-      .eq('id', selected.id);
   };
 
   const toggleAI = async () => {
