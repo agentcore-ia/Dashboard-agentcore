@@ -224,10 +224,12 @@ export default function ConversasPage() {
     setInput("");
 
     // Invoke the send-whatsapp-message Edge Function
+    // disable_ai: true => human is taking over manually from the dashboard
     const { data, error } = await supabase.functions.invoke('send-whatsapp-message', {
       body: {
         conversacion_id: selected.id,
-        content: content
+        content: content,
+        disable_ai: true
       }
     });
 
