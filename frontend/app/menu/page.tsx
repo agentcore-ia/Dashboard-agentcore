@@ -1,182 +1,414 @@
 "use client";
 
-import { useState } from "react";
-import { 
-  UtensilsCrossed, 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit2, 
-  Trash2, 
-  CheckCircle2, 
-  XCircle,
-  AlertCircle
-} from "lucide-react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 interface Product {
   id: string;
+  restaurant_id: string;
   name: string;
   description: string;
   price: number;
   category: string;
-  in_stock: boolean;
-  stock_quantity?: number;
+  image_url: string;
+  available: boolean;
 }
 
-const DEMO_PRODUCTS: Product[] = [
-  {
-    id: "1",
-    name: "Beast Classic",
-    description: "Hamburguesa de 180g, queso cheddar, lechuga, tomate y salsa especial.",
-    price: 32.90,
-    category: "Hamburguesas",
-    in_stock: true,
-    stock_quantity: 45
-  },
-  {
-    id: "2",
-    name: "Beast Double",
-    description: "Doble carne de 180g, doble cheddar, bacon crujiente y cebolla caramelizada.",
-    price: 44.90,
-    category: "Hamburguesas",
-    in_stock: true,
-    stock_quantity: 20
-  },
-  {
-    id: "3",
-    name: "Papas con Cheddar y Bacon",
-    description: "Porción de papas fritas crocantes con baño de cheddar y trozos de bacon.",
-    price: 22.90,
-    category: "Acompañamientos",
-    in_stock: true,
-    stock_quantity: 100
-  },
-  {
-    id: "4",
-    name: "Refresco 600ml",
-    description: "Coca-Cola, Sprite o Fanta bien fría.",
-    price: 9.00,
-    category: "Bebidas",
-    in_stock: false,
-    stock_quantity: 0
-  }
-];
+const CATEGORY_MAP: Record<string, { icon: string; colorClass: string }> = {
+  Pizzas: { icon: "local_pizza", colorClass: "bg-orange-100 text-orange-800" },
+  Burgers: { icon: "lunch_dining", colorClass: "bg-stone-100 text-stone-500" },
+  Bebidas: { icon: "local_bar", colorClass: "bg-lime-50 text-lime-700" },
+  Postres: { icon: "icecream", colorClass: "bg-pink-50 text-pink-700" },
+  Pasta: { icon: "dinner_dining", colorClass: "bg-stone-100 text-stone-500" },
+  default: { icon: "restaurant", colorClass: "bg-green-50 text-green-700" },
+};
+
+const RESTAURANT_ID = '00000000-0000-0000-0000-000000000001';
 
 export default function MenuPage() {
-  const [products, setProducts] = useState<Product[]>(DEMO_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState("Todo");
   const [search, setSearch] = useState("");
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [formData, setFormData] = useState<Partial<Product>>({
+     name: "", description: "", price: 0, category: "Pizzas", available: true 
+  });
+  const [isSaving, setIsSaving] = useState(false);
 
-  const toggleStock = (id: string) => {
-    setProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, in_stock: !p.in_stock } : p
-    ));
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  async function fetchProducts() {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('restaurant_id', RESTAURANT_ID)
+      .order('category', { ascending: true })
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching menu:', error);
+    } else {
+      setProducts(data || []);
+    }
+    setLoading(false);
+  }
+
+  const toggleAvailability = async (product: Product) => {
+    const newStatus = !product.available;
+    // Optimistic UI update
+    setProducts(prev => prev.map(p => p.id === product.id ? { ...p, available: newStatus } : p));
+    
+    const { error } = await supabase
+      .from('products')
+      .update({ available: newStatus })
+      .eq('id', product.id);
+
+    if (error) {
+      console.error('Error toggling availability:', error);
+      // Revert if error
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, available: product.available } : p));
+    }
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.category.toLowerCase().includes(search.toLowerCase())
-  );
+  const openNewModal = () => {
+    setEditingProduct(null);
+    setFormData({ name: "", description: "", price: 0, category: "Pizzas", available: true });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (product: Product) => {
+    setEditingProduct(product);
+    setFormData({
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      category: product.category,
+      available: product.available,
+    });
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+  };
+
+  const saveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    
+    if (editingProduct) {
+      // Update
+      const { data, error } = await supabase
+        .from('products')
+        .update({
+          name: formData.name,
+          description: formData.description,
+          price: Number(formData.price),
+          category: formData.category,
+          available: formData.available,
+        })
+        .eq('id', editingProduct.id)
+        .select()
+        .single();
+        
+      if (!error && data) {
+         setProducts(prev => prev.map(p => p.id === editingProduct.id ? data : p));
+      }
+    } else {
+      // Insert
+      const { data, error } = await supabase
+        .from('products')
+        .insert([{
+          restaurant_id: RESTAURANT_ID,
+          name: formData.name,
+          description: formData.description,
+          price: Number(formData.price),
+          category: formData.category,
+          available: formData.available,
+          image_url: '' // optional default
+        }])
+        .select()
+        .single();
+        
+      if (!error && data) {
+         setProducts(prev => [...prev, data]);
+      }
+    }
+    
+    setIsSaving(false);
+    closeModal();
+  };
+
+  const deleteProduct = async () => {
+    if (!editingProduct) return;
+    if (!window.confirm("¿Seguro que deseas eliminar este producto?")) return;
+    
+    setIsSaving(true);
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', editingProduct.id);
+      
+    if (!error) {
+       setProducts(prev => prev.filter(p => p.id !== editingProduct.id));
+    }
+    setIsSaving(false);
+    closeModal();
+  };
+
+  const categories = ["Todo", "Pizzas", "Burgers", "Bebidas", "Postres", "Pasta"];
+
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || (p.description?.toLowerCase().includes(search.toLowerCase()));
+    const matchesCategory = activeFilter === "Todo" || p.category === activeFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
-    <div className="p-4 lg:p-8 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center icon-orange">
-            <UtensilsCrossed className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="font-bold text-xl lg:text-2xl">Menú y Stock</h1>
-            <p className="text-xs lg:text-sm text-white/40">Gestiona tus productos y disponibilidad en tiempo real</p>
-          </div>
+    <div className="flex-1 overflow-y-auto px-4 md:px-10 pb-12 pt-6 lg:pt-8 bg-surface w-full">
+      {/* Search Bar / Top Mobile Nav space placeholder if needed, matching code.html struct */}
+      <div className="flex justify-end mb-6 w-full lg:hidden">
+         <div className="relative w-full">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-stone-400">search</span>
+            <input 
+               className="w-full pl-10 pr-4 py-3 bg-surface-container-high border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 transition-all focus:bg-surface-container-lowest" 
+               placeholder="Buscar platos..." 
+               type="text"
+               value={search}
+               onChange={(e) => setSearch(e.target.value)}
+            />
+         </div>
+      </div>
+
+      {/* Header Section */}
+      <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-on-surface font-headline">Categorías del Menú</h1>
+          <p className="text-stone-500 text-sm mt-1">Gestiona los platos y su disponibilidad</p>
         </div>
-        <button className="btn-primary flex items-center justify-center gap-2">
-          <Plus className="w-4 h-4" />
-          <span>Nuevo Producto</span>
+        <div className="hidden lg:block relative group w-64 mr-4">
+           {/* Desktop search */}
+           <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-stone-400">search</span>
+           <input 
+              className="w-full pl-10 pr-4 py-3 bg-surface-container-high border-none rounded-full text-sm focus:ring-2 focus:ring-primary/20 transition-all focus:bg-surface-container-lowest" 
+              placeholder="Buscar platos..." 
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+           />
+        </div>
+        <button 
+           onClick={openNewModal}
+           className="h-12 px-6 bg-primary text-on-primary rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/30 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all active:translate-y-0"
+        >
+          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add_circle</span>
+          <span>Añadir Nuevo Plato</span>
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-          <input 
-            type="text"
-            placeholder="Buscar por nombre o categoría..."
-            className="input-dark pl-10"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <button className="btn-ghost flex items-center justify-center gap-2">
-          <Filter className="w-4 h-4" />
-          <span>Filtros</span>
-        </button>
+      {/* Compact Category Filter */}
+      <div className="mb-10 flex flex-wrap gap-3 items-center">
+        {categories.map((cat) => {
+          const isActive = activeFilter === cat;
+          const catInfo = CATEGORY_MAP[cat] || CATEGORY_MAP.default;
+          // Icon for "Todo" is list
+          const icon = cat === "Todo" ? "list" : catInfo.icon;
+          
+          return (
+            <button 
+              key={cat}
+              onClick={() => setActiveFilter(cat)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
+                 isActive 
+                   ? "bg-primary text-on-primary shadow-md shadow-primary/20 font-bold" 
+                   : "bg-surface-container-low text-on-surface-variant hover:bg-secondary-container hover:text-on-secondary-container"
+              }`}
+            >
+              <span className="material-symbols-outlined text-xl">{icon}</span>
+              <span className="hidden sm:inline">{cat}</span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Products Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filteredProducts.map((p) => (
-          <div key={p.id} className="glass-card p-5 group flex flex-col h-full">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-[10px] uppercase tracking-wider font-bold text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">
-                {p.category}
-              </span>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button className="p-1.5 hover:bg-white/10 rounded-lg text-white/50 hover:text-white">
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button className="p-1.5 hover:bg-red-500/10 rounded-lg text-white/50 hover:text-red-400">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1">
-              <h3 className="font-bold text-lg mb-1">{p.name}</h3>
-              <p className="text-xs text-white/50 line-clamp-2 mb-4 leading-relaxed">
-                {p.description}
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
-              <span className="font-bold text-xl text-green-400">
-                ${p.price.toFixed(2)}
-              </span>
-              
-              <button 
-                onClick={() => toggleStock(p.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                  p.in_stock 
-                    ? "bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20" 
-                    : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
-                }`}
+      {/* Menu List */}
+      {loading ? (
+         <div className="flex justify-center p-20"><div className="animate-spin w-8 h-8 border-b-2 border-primary rounded-full"></div></div>
+      ) : filteredProducts.length === 0 ? (
+         <div className="text-center p-20 text-stone-400 bg-surface-container-lowest rounded-3xl border border-dashed border-stone-200">No se encontraron productos.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-4">
+          {filteredProducts.map(product => {
+            const catInfo = CATEGORY_MAP[product.category] || CATEGORY_MAP.default;
+            
+            return (
+              <div 
+                 key={product.id} 
+                 className={`bg-surface-container-lowest rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm border border-stone-100 hover:border-primary/20 transition-all group ${!product.available ? 'opacity-70' : ''}`}
               >
-                {p.in_stock ? (
-                  <><CheckCircle2 className="w-3.5 h-3.5" /> En Stock</>
-                ) : (
-                  <><XCircle className="w-3.5 h-3.5" /> Agotado</>
-                )}
+                <div className="flex items-center gap-4 flex-1 min-w-0 mb-4 sm:mb-0">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${product.available ? catInfo.colorClass : 'bg-stone-100 text-stone-400'}`}>
+                    <span className="material-symbols-outlined">{catInfo.icon}</span>
+                  </div>
+                  <div className="min-w-0 flex-1 pr-4">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-on-surface truncate font-headline">{product.name}</h3>
+                      <span className={`text-sm font-black ${product.available ? 'text-primary' : 'text-stone-400'}`}>${Number(product.price).toFixed(2)}</span>
+                    </div>
+                    <p className="text-xs text-stone-500 truncate mt-0.5">{product.description || "Sin descripción"}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end sm:justify-start gap-6 sm:pl-4 sm:border-l sm:border-stone-100">
+                  <div className="flex items-center gap-2">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                         type="checkbox" 
+                         className="sr-only toggle-checkbox" 
+                         checked={product.available}
+                         onChange={() => toggleAvailability(product)}
+                      />
+                      <div className={`w-9 h-5 rounded-full transition-colors relative ${product.available ? 'bg-primary' : 'bg-stone-200'}`}>
+                        <div className={`absolute top-[2px] left-[2px] bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${product.available ? 'translate-x-[1rem]' : ''}`}></div>
+                      </div>
+                    </label>
+                    <span className={`text-[10px] font-bold uppercase hidden sm:inline ${product.available ? 'text-primary' : 'text-stone-400'}`}>
+                       {product.available ? 'Disponible' : 'Agotado'}
+                    </span>
+                  </div>
+                  <div className="flex gap-1">
+                    <button 
+                       onClick={() => openEditModal(product)}
+                       className="p-1.5 text-stone-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-lg">edit</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* CRUD Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-surface-container-lowest rounded-3xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-surface-container-low/30">
+              <h2 className="text-xl font-headline font-black text-on-surface">
+                 {editingProduct ? 'Editar Plato' : 'Añadir Nuevo Plato'}
+              </h2>
+              <button onClick={closeModal} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-stone-200 text-stone-500 transition-colors">
+                <span className="material-symbols-outlined text-sm font-bold">close</span>
               </button>
             </div>
-
-            {!p.in_stock && (
-              <div className="mt-3 flex items-center gap-1.5 text-[10px] text-red-400/80 bg-red-400/5 p-2 rounded-lg">
-                <AlertCircle className="w-3 h-3" />
-                <span>La IA no ofrecerá este producto hasta que haya stock</span>
+            
+            <form onSubmit={saveProduct} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1.5">Nombre del Plato</label>
+                <input 
+                  required
+                  type="text" 
+                  value={formData.name}
+                  onChange={e => setFormData({...formData, name: e.target.value})}
+                  className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  placeholder="Ej. Pizza Margarita"
+                />
               </div>
-            )}
-          </div>
-        ))}
-      </div>
 
-      {filteredProducts.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
-            <Search className="w-8 h-8 text-white/20" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1.5">Precio ($)</label>
+                  <input 
+                    required
+                    type="number" 
+                    step="0.01"
+                    min="0"
+                    value={formData.price}
+                    onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})}
+                    className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1.5">Categoría</label>
+                  <select 
+                    value={formData.category}
+                    onChange={e => setFormData({...formData, category: e.target.value})}
+                    className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none"
+                  >
+                    {categories.filter(c => c !== "Todo").map(cat => (
+                       <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1.5">Descripción</label>
+                <textarea 
+                  rows={2}
+                  value={formData.description}
+                  onChange={e => setFormData({...formData, description: e.target.value})}
+                  className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none"
+                  placeholder="Breve descripción de los ingredientes..."
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                 <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                       type="checkbox" 
+                       className="sr-only toggle-checkbox" 
+                       checked={formData.available}
+                       onChange={e => setFormData({...formData, available: e.target.checked})}
+                    />
+                    <div className={`w-11 h-6 rounded-full transition-colors relative ${formData.available ? 'bg-primary' : 'bg-stone-200'}`}>
+                      <div className={`absolute top-[2px] left-[2px] bg-white w-5 h-5 rounded-full transition-transform shadow-sm ${formData.available ? 'translate-x-[1.25rem]' : ''}`}></div>
+                    </div>
+                  </label>
+                  <span className="text-sm font-bold text-stone-700">Producto Disponible al Público</span>
+              </div>
+
+              <div className="pt-6 flex items-center justify-between border-t border-stone-100 mt-6">
+                {editingProduct ? (
+                  <button 
+                     type="button"
+                     onClick={deleteProduct}
+                     className="text-error hover:bg-error/10 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                  >
+                    Eliminar
+                  </button>
+                ) : <div></div>}
+                
+                <div className="flex gap-3">
+                  <button 
+                     type="button" 
+                     onClick={closeModal}
+                     className="px-5 py-2.5 rounded-xl font-bold text-sm text-stone-600 hover:bg-stone-100 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                     type="submit"
+                     disabled={isSaving}
+                     className="bg-primary text-on-primary px-6 py-2.5 rounded-xl font-bold text-sm shadow-md shadow-primary/20 hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : null}
+                    {editingProduct ? 'Guardar Cambios' : 'Crear Plato'}
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
-          <h3 className="text-xl font-bold mb-1">No se encontraron productos</h3>
-          <p className="text-white/40 max-w-xs">Prueba con términos diferentes o agrega un producto nuevo.</p>
         </div>
       )}
     </div>

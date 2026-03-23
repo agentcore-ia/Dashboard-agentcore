@@ -5,9 +5,10 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 
 const navItems = [
-  { href: "/", label: "Inicio", icon: "home" },
+  { href: "/", label: "Inicio", icon: "dashboard" },
   { href: "/conversaciones", label: "Chats", icon: "chat" },
   { href: "/pedidos", label: "Pedidos", icon: "restaurant_menu" },
+  { href: "/menu", label: "Menú", icon: "menu_book" },
   { href: "/analytics", label: "Analíticas", icon: "analytics" },
   { href: "/modulos", label: "Módulos", icon: "smart_toy" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
