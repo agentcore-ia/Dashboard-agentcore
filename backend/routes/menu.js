@@ -8,21 +8,44 @@ const { JWT } = require('google-auth-library');
 // We also need the GOOGLE_SHEETS_ID from the URL
 const SHEET_ID = process.env.GOOGLE_SHEETS_ID || '1WUQRUqR-u8FLENLJUuxpNepQ3eezlaw6yo8CI0fVYq4';
 const SERVICE_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || '';
-const PRIVATE_KEY = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+
+// ── Sanitize Private Key ─────────────────────────────────
+// Easypanel env panels sometimes wrap values in quotes or escape \n differently
+let rawKey = process.env.GOOGLE_PRIVATE_KEY || '';
+// Strip surrounding quotes if present
+if ((rawKey.startsWith('"') && rawKey.endsWith('"')) || (rawKey.startsWith("'") && rawKey.endsWith("'"))) {
+    rawKey = rawKey.slice(1, -1);
+}
+// Replace literal \n sequences with actual newlines
+const PRIVATE_KEY = rawKey.replace(/\\n/g, '\n');
+
+console.log('── Menu Route Init ──');
+console.log('SHEET_ID:', SHEET_ID ? '✅' : '❌');
+console.log('SERVICE_EMAIL:', SERVICE_EMAIL ? '✅ ' + SERVICE_EMAIL : '❌ MISSING');
+console.log('PRIVATE_KEY:', PRIVATE_KEY.includes('BEGIN PRIVATE KEY') ? '✅ valid format' : '❌ BAD FORMAT or MISSING');
+console.log('────────────────────');
 
 // Initialize auth
-const auth = new JWT({
-    email: SERVICE_EMAIL,
-    key: PRIVATE_KEY,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
-
-const doc = new GoogleSpreadsheet(SHEET_ID, auth);
+let auth, doc;
+try {
+    auth = new JWT({
+        email: SERVICE_EMAIL,
+        key: PRIVATE_KEY,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+    doc = new GoogleSpreadsheet(SHEET_ID, auth);
+    console.log('✅ GoogleSpreadsheet initialized');
+} catch (initErr) {
+    console.error('❌ GoogleSpreadsheet init failed:', initErr.message);
+}
 
 let isReady = false;
 
 // Middleware to ensure document loads first
 async function ensureDocLoad(req, res, next) {
+    if (!doc) {
+        return res.status(500).json({ error: "Google Sheets client failed to initialize. Check server logs." });
+    }
     if (!SERVICE_EMAIL || !PRIVATE_KEY) {
         return res.status(500).json({ error: "Missing Google Service Account credentials in .env (GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY)" });
     }
