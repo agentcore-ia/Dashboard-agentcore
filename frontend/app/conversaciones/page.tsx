@@ -404,10 +404,13 @@ export default function ConversasPage() {
                 </button>
                 <button 
                   onClick={() => setShowProfile(!showProfile)}
-                  className={`p-2 rounded-full transition-colors flex items-center justify-center ${showProfile ? 'bg-primary/20 text-primary' : 'hover:bg-surface-container-high text-stone-500'}`}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors ${showProfile ? 'bg-primary/10 text-primary' : 'bg-surface-container-lowest text-stone-600 border border-stone-200 hover:bg-surface-container-low'}`}
                   title="Ver perfil del cliente"
                 >
-                  <span className="material-symbols-outlined">info</span>
+                  <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 0" }}>
+                    person_book
+                  </span>
+                  <span>{showProfile ? 'Ocultar Perfil' : 'Ver Perfil'}</span>
                 </button>
                 <button className="p-2 hover:bg-surface-container-high rounded-full transition-colors text-stone-500">
                   <span className="material-symbols-outlined">more_vert</span>
@@ -511,7 +514,14 @@ export default function ConversasPage() {
       <aside className="hidden lg:flex w-[320px] bg-surface flex-col border-l border-stone-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 transition-all">
         {selected ? (
           <>
-            <div className="p-6 border-b border-stone-100 bg-surface-container-low/50">
+            <div className="p-6 border-b border-stone-100 bg-surface-container-low/50 relative">
+              <button 
+                onClick={() => setShowProfile(false)}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-stone-200 text-stone-400 hover:text-stone-700 transition-colors"
+                title="Cerrar perfil"
+              >
+                <span className="material-symbols-outlined text-sm font-bold">close</span>
+              </button>
               <h3 className="font-headline font-bold text-stone-900 mb-4">Perfil del Cliente</h3>
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-12 h-12 rounded-2xl bg-orange-100 flex items-center justify-center text-primary">
