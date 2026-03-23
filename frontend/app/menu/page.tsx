@@ -9,9 +9,12 @@ interface Product {
   description: string;
   price: number;
   category: string;
-  image_url: string;
+  image_url?: string;
   available: boolean;
+  aliases?: string;
 }
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
 const CATEGORY_MAP: Record<string, { icon: string; colorClass: string }> = {
   Pizzas: { icon: "local_pizza", colorClass: "bg-orange-100 text-orange-800" },
@@ -34,7 +37,7 @@ export default function MenuPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState<Partial<Product>>({
-     name: "", description: "", price: 0, category: "Pizzas", available: true 
+     name: "", description: "", price: 0, category: "Pizzas", available: true, aliases: ""
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -45,10 +48,20 @@ export default function MenuPage() {
   async function fetchProducts() {
     setLoading(true);
     try {
-      const res = await fetch('/api/menu');
+      const res = await fetch(`${API_URL}/menu`);
       if (res.ok) {
-        const data = await res.json();
-        setProducts(data);
+        const rawData = await res.json();
+        // The backend returns keys matching the spreadsheet: producto, tipo, disponible, precio, ingredientes, aliases
+        const mappedData = rawData.map((item: any, idx: number) => ({
+           id: `gsheet-${idx}`,
+           name: item.producto,
+           category: item.tipo,
+           available: item.disponible === 'Sí',
+           price: parseFloat(String(item.precio).replace(/[^0-9.]/g, '')),
+           description: item.ingredientes || '',
+           aliases: item.aliases || ''
+        }));
+        setProducts(mappedData);
       } else {
         console.error('API Error:', await res.text());
       }
@@ -63,10 +76,10 @@ export default function MenuPage() {
     setProducts(prev => prev.map(p => p.id === product.id ? { ...p, available: newStatus } : p));
     
     try {
-       const res = await fetch('/api/menu', {
-          method: 'POST',
+       const res = await fetch(`${API_URL}/menu/${encodeURIComponent(product.name)}/disponible`, {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...product, available: newStatus })
+          body: JSON.stringify({ disponible: newStatus ? 'Sí' : 'No' })
        });
        if (!res.ok) throw new Error("Sync failed");
     } catch (err) {
@@ -77,7 +90,7 @@ export default function MenuPage() {
 
   const openNewModal = () => {
     setEditingProduct(null);
-    setFormData({ name: "", description: "", price: 0, category: "Pizzas", available: true });
+    setFormData({ name: "", description: "", price: 0, category: "Pizzas", available: true, aliases: "" });
     setIsModalOpen(true);
   };
 
@@ -89,6 +102,7 @@ export default function MenuPage() {
       price: product.price,
       category: product.category,
       available: product.available,
+      aliases: product.aliases || ""
     });
     setIsModalOpen(true);
   };
@@ -103,32 +117,54 @@ export default function MenuPage() {
     
     try {
       const payload = {
-        name: formData.name,
-        description: formData.description,
-        price: Number(formData.price),
-        category: formData.category,
-        available: formData.available,
+        producto: formData.name,
+        ingredientes: formData.description,
+        precio: Number(formData.price),
+        tipo: formData.category,
+        disponible: formData.available ? "Sí" : "No",
+        aliases: formData.aliases
       };
 
-      const res = await fetch('/api/menu', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify(payload)
-      });
+      let res;
+      if (editingProduct) {
+         res = await fetch(`${API_URL}/menu/${encodeURIComponent(editingProduct.name)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+         });
+      } else {
+         res = await fetch(`${API_URL}/menu`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+         });
+      }
       
-      if (!res.ok) throw new Error("API Save Error");
+      if (!res.ok) {
+         const errData = await res.json();
+         throw new Error(errData.error || "API Save Error");
+      }
       
-      const { product: savedData } = await res.json();
+      const { data: savedData } = await res.json();
+      
+      const mappedRecord: Product = {
+         id: editingProduct ? editingProduct.id : `gsheet-new-${Date.now()}`,
+         name: savedData.Producto || formData.name || "",
+         category: savedData.Tipo || formData.category || "Otro",
+         available: (savedData.Disponible === 'Sí' || formData.available),
+         price: Number(formData.price),
+         description: savedData.Ingredientes || formData.description || "",
+         aliases: savedData.Aliases || formData.aliases || ""
+      };
       
       if (editingProduct) {
-         setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...savedData } : p));
+         setProducts(prev => prev.map(p => p.id === editingProduct.id ? mappedRecord : p));
       } else {
-         // Fake ID since Google Sheets doesn't return one instantly from our webhook sync
-         setProducts(prev => [...prev, { ...savedData, id: `gsheet-new-${Date.now()}` }]);
+         setProducts(prev => [...prev, mappedRecord]);
       }
-    } catch (error) {
+    } catch (error: any) {
        console.error("Save error:", error);
-       alert("Error al guardar el producto.");
+       alert("Error al guardar el producto: " + error.message);
     }
     
     setIsSaving(false);
@@ -141,7 +177,7 @@ export default function MenuPage() {
     
     setIsSaving(true);
     try {
-       const res = await fetch(`/api/menu?name=${encodeURIComponent(editingProduct.name)}`, {
+       const res = await fetch(`${API_URL}/menu/${encodeURIComponent(editingProduct.name)}`, {
           method: 'DELETE'
        });
        if (res.ok) {
@@ -347,14 +383,26 @@ export default function MenuPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1.5">Descripción</label>
+                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1.5">Descripción o Ingredientes</label>
                 <textarea 
                   rows={2}
                   value={formData.description}
                   onChange={e => setFormData({...formData, description: e.target.value})}
                   className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none"
-                  placeholder="Breve descripción de los ingredientes..."
+                  placeholder="Ej: Salsa de tomate, muzzarella, orégano..."
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-500 uppercase tracking-wider mb-1.5">Aliases (Separados por coma)</label>
+                <input 
+                  type="text" 
+                  value={formData.aliases}
+                  onChange={e => setFormData({...formData, aliases: e.target.value})}
+                  className="w-full bg-surface-container-low border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  placeholder="Ej: muzza, muzarella, pizza especial"
+                />
+                <p className="text-[10px] text-stone-400 mt-1 ml-1 leading-tight">Palabras clave que ayudarán a la IA a identificar cuando un cliente pide este producto.</p>
               </div>
 
               <div className="flex items-center gap-3 pt-2">

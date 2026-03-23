@@ -12,6 +12,7 @@ const campaignsRouter = require('./routes/campaigns');
 const webhookRouter = require('./routes/webhook');
 const aiConfigRouter = require('./routes/ai-config');
 const n8nRouter = require('./routes/n8n');
+const menuRouter = require('./routes/menu');
 
 const app = express();
 const server = http.createServer(app);
@@ -35,6 +36,7 @@ app.use('/api/campaigns', campaignsRouter);
 app.use('/api/webhook', webhookRouter);
 app.use('/api/ai-config', aiConfigRouter);
 app.use('/api/n8n', n8nRouter);
+app.use('/api/menu', menuRouter);
 
 // Health check para Easypanel
 app.get('/', (req, res) => res.send('🚀 Backend Agentcore OK'));
