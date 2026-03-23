@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
 
 interface Product {
   id: string;
@@ -45,35 +44,34 @@ export default function MenuPage() {
 
   async function fetchProducts() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .eq('restaurant_id', RESTAURANT_ID)
-      .order('category', { ascending: true })
-      .order('name', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching menu:', error);
-    } else {
-      setProducts(data || []);
+    try {
+      const res = await fetch('/api/menu');
+      if (res.ok) {
+        const data = await res.json();
+        setProducts(data);
+      } else {
+        console.error('API Error:', await res.text());
+      }
+    } catch (error) {
+       console.error('Fetch error:', error);
     }
     setLoading(false);
   }
 
   const toggleAvailability = async (product: Product) => {
     const newStatus = !product.available;
-    // Optimistic UI update
     setProducts(prev => prev.map(p => p.id === product.id ? { ...p, available: newStatus } : p));
     
-    const { error } = await supabase
-      .from('products')
-      .update({ available: newStatus })
-      .eq('id', product.id);
-
-    if (error) {
-      console.error('Error toggling availability:', error);
-      // Revert if error
-      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, available: product.available } : p));
+    try {
+       const res = await fetch('/api/menu', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...product, available: newStatus })
+       });
+       if (!res.ok) throw new Error("Sync failed");
+    } catch (err) {
+       console.error('Error toggling availability:', err);
+       setProducts(prev => prev.map(p => p.id === product.id ? { ...p, available: product.available } : p));
     }
   };
 
@@ -103,43 +101,34 @@ export default function MenuPage() {
     e.preventDefault();
     setIsSaving(true);
     
-    if (editingProduct) {
-      // Update
-      const { data, error } = await supabase
-        .from('products')
-        .update({
-          name: formData.name,
-          description: formData.description,
-          price: Number(formData.price),
-          category: formData.category,
-          available: formData.available,
-        })
-        .eq('id', editingProduct.id)
-        .select()
-        .single();
-        
-      if (!error && data) {
-         setProducts(prev => prev.map(p => p.id === editingProduct.id ? data : p));
+    try {
+      const payload = {
+        name: formData.name,
+        description: formData.description,
+        price: Number(formData.price),
+        category: formData.category,
+        available: formData.available,
+      };
+
+      const res = await fetch('/api/menu', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(payload)
+      });
+      
+      if (!res.ok) throw new Error("API Save Error");
+      
+      const { product: savedData } = await res.json();
+      
+      if (editingProduct) {
+         setProducts(prev => prev.map(p => p.id === editingProduct.id ? { ...p, ...savedData } : p));
+      } else {
+         // Fake ID since Google Sheets doesn't return one instantly from our webhook sync
+         setProducts(prev => [...prev, { ...savedData, id: `gsheet-new-${Date.now()}` }]);
       }
-    } else {
-      // Insert
-      const { data, error } = await supabase
-        .from('products')
-        .insert([{
-          restaurant_id: RESTAURANT_ID,
-          name: formData.name,
-          description: formData.description,
-          price: Number(formData.price),
-          category: formData.category,
-          available: formData.available,
-          image_url: '' // optional default
-        }])
-        .select()
-        .single();
-        
-      if (!error && data) {
-         setProducts(prev => [...prev, data]);
-      }
+    } catch (error) {
+       console.error("Save error:", error);
+       alert("Error al guardar el producto.");
     }
     
     setIsSaving(false);
@@ -151,13 +140,18 @@ export default function MenuPage() {
     if (!window.confirm("¿Seguro que deseas eliminar este producto?")) return;
     
     setIsSaving(true);
-    const { error } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', editingProduct.id);
-      
-    if (!error) {
-       setProducts(prev => prev.filter(p => p.id !== editingProduct.id));
+    try {
+       const res = await fetch(`/api/menu?name=${encodeURIComponent(editingProduct.name)}`, {
+          method: 'DELETE'
+       });
+       if (res.ok) {
+          setProducts(prev => prev.filter(p => p.id !== editingProduct.id));
+       } else {
+          throw new Error("API Delete Error");
+       }
+    } catch (err) {
+       console.error("Delete error:", err);
+       alert("Error al eliminar el producto.");
     }
     setIsSaving(false);
     closeModal();
