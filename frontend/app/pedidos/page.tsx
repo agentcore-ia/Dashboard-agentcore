@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Clock, Truck, CheckCircle, Package, MapPin, ChefHat, Volume2, VolumeX, RefreshCw, XCircle, Home } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
 type OrderStatus = "new" | "preparing" | "ready" | "delivering" | "delivered" | "cancelled";
@@ -14,130 +13,112 @@ interface Order {
   delivery_fee: number; total: number; items: OrderItem[]; created_at: string;
 }
 
-const COLUMNS: { key: OrderStatus; label: string; color: string; icon: React.ReactNode }[] = [
-  { key: "new", label: "Nuevos", color: "#f87171", icon: <Clock className="w-4 h-4" /> },
-  { key: "preparing", label: "Preparando", color: "#fb923c", icon: <ChefHat className="w-4 h-4" /> },
-  { key: "ready", label: "Listos", color: "#4ade80", icon: <CheckCircle className="w-4 h-4" /> },
-  { key: "delivering", label: "En camino", color: "#60a5fa", icon: <Truck className="w-4 h-4" /> },
-  { key: "delivered", label: "Entregados", color: "#9ca3af", icon: <Package className="w-4 h-4" /> },
-  { key: "cancelled", label: "Cancelados", color: "#f43f5e", icon: <XCircle className="w-4 h-4" /> },
-];
-
 const STATUS_FLOW: Record<OrderStatus, OrderStatus | null> = {
   new: "preparing", preparing: "ready", ready: "delivering", delivering: "delivered", delivered: null, cancelled: null,
 };
 
-const BTN_LABELS: Record<OrderStatus, string | null> = {
-  new: "Confirmar y Preparar", preparing: "Marcar como Listo", ready: "Marcar como Enviado", delivering: "Marcar como Entregado", delivered: null, cancelled: null,
-};
-
-const PAYMENT_ICONS: Record<string, string> = { card: "💳", cash: "💵", pix: "📲", transfer: "🏦" };
-const PAYMENT_LABELS: Record<string, string> = { card: "Tarjeta", cash: "Efectivo", pix: "Pix", transfer: "Transferencia" };
-
-function timeAgo(date: string) {
-  const diff = Date.now() - new Date(date).getTime();
+function timeAgoObj(date: string) {
+  const diff = Math.max(0, Date.now() - new Date(date).getTime());
   const m = Math.floor(diff / 60000);
-  if (m < 1) return "ahora";
-  if (m < 60) return `hace ${m}m`;
-  return `hace ${Math.floor(m / 60)}h${m % 60 > 0 ? `${m % 60}m` : ""}`;
+  return { minutes: m, isLate: m > 15 };
 }
 
 function isPickup(order: Order) {
   return order.delivery_type === 'pickup' || order.address === 'Retiro en local';
 }
 
-function OrderCard({ order, onAdvance, onCancel }: { order: Order; onAdvance: (id: string, next: OrderStatus) => void; onCancel: (id: string) => void }) {
+function OrderCard({ order, onAdvance }: { order: Order; onAdvance: (id: string, next: OrderStatus) => void }) {
   const nextStatus = STATUS_FLOW[order.status];
-  const btnLabel = BTN_LABELS[order.status];
   const pickup = isPickup(order);
+  const time = timeAgoObj(order.created_at);
+
+  // Card styles by status
+  let borderColor = "";
+  let badgeClass = "";
+  let badgeText = "";
+  let btnClass = "";
+  let btnLabel = "";
+
+  if (order.status === "new") {
+    borderColor = time.isLate ? "border-red-500" : "border-orange-400";
+    badgeClass = time.isLate ? "bg-red-50 text-red-600" : "bg-stone-100 text-stone-500";
+    badgeText = `${time.minutes}m espera`;
+    btnClass = "bg-orange-600 hover:bg-orange-700 text-white shadow-orange-600/20";
+    btnLabel = "Empezar a cocinar";
+  } else if (order.status === "preparing") {
+    borderColor = "border-primary";
+    badgeClass = "text-stone-400 bg-transparent";
+    badgeText = `${time.minutes}m en cocina`;
+    btnClass = "bg-primary hover:bg-primary-container text-white shadow-primary/20";
+    btnLabel = "Marcar como Listo";
+  } else if (order.status === "ready") {
+    borderColor = "border-green-500";
+    badgeClass = "text-green-500 bg-green-50 px-2 rounded-md";
+    badgeText = "Listo";
+    btnClass = "bg-green-600 hover:bg-green-700 text-white shadow-green-600/20";
+    btnLabel = pickup ? "Entregar a Cliente" : "Despachar a Envío";
+  }
 
   return (
-    <div className="glass-card p-4 fade-in mb-3 backdrop-blur-md rounded-xl border border-white/10 bg-white/5" style={{ minWidth: "260px" }}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full pulse" style={{ background: order.status === "new" ? "#f87171" : order.status === "cancelled" ? "#f43f5e" : "#4ade80" }} />
-          <span className="font-bold text-sm">PEDIDO #{order.order_number}</span>
-          {order.status !== "cancelled" && (pickup ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded uppercase font-bold tracking-tight" style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80" }}>
-              <Home className="w-3 h-3 inline mr-1" />RETIRO
+    <div className={`bg-surface-container-lowest rounded-2xl p-5 shadow-sm border-l-4 ${borderColor} flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2`}>
+      <div className="flex justify-between items-start">
+        <div>
+          <h4 className="font-headline font-bold text-on-surface">{order.customer_name}</h4>
+          <div className="flex items-center gap-1.5 text-stone-400 mt-1">
+            <span className="material-symbols-outlined text-sm">{pickup ? 'storefront' : 'moped'}</span>
+            <span className="text-xs font-semibold">
+              {pickup ? 'Retiro en local' : 'Delivery'} • #{order.order_number}
             </span>
-          ) : (
-            <span className="text-[10px] px-1.5 py-0.5 rounded uppercase font-bold tracking-tight" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>
-              <Truck className="w-3 h-3 inline mr-1" />DELIVERY
-            </span>
-          ))}
+          </div>
         </div>
-        {order.status === "new" && (
-          <button onClick={() => onCancel(order.id)} className="text-red-400 hover:text-red-300 transition-colors" title="Cancelar pedido">
-            <XCircle className="w-4 h-4" />
+        
+        {order.status === "ready" ? (
+          <span className="material-symbols-outlined text-green-500">check_circle</span>
+        ) : order.status === "preparing" && time.minutes < 5 ? (
+          <div className="flex items-center gap-1">
+            <span className="material-symbols-outlined text-sm text-primary animate-spin">progress_activity</span>
+            <span className="text-xs font-black text-primary">Precocinando</span>
+          </div>
+        ) : (
+          <span className={`text-xs font-black px-2 py-1 rounded-md ${badgeClass}`}>{badgeText}</span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <ul className="text-sm font-medium text-stone-600 list-none space-y-1">
+          {order.items.length > 0 ? (
+            order.items.map((item, i) => (
+              <li key={i} className="flex justify-between">
+                <span>{item.quantity}x {item.name}</span>
+              </li>
+            ))
+          ) : (
+            <li className="italic opacity-50 text-xs">Sin detalles de items</li>
+          )}
+        </ul>
+        
+        {/* Mock for order notes, if any existed on order level we'd show them here */}
+        {order.items.some(i => i.notes) && (
+          <div className="bg-orange-50 p-2 rounded-lg border border-orange-100">
+            <p className="text-[11px] font-bold text-orange-800 uppercase flex items-center gap-1">
+              <span className="material-symbols-outlined text-xs">priority_high</span>
+              {order.items.map(i => i.notes).filter(Boolean).join(" | ")}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-stone-100 pt-3 mt-1">
+        <span className="text-lg font-black font-headline text-stone-800">${order.total.toLocaleString('es-AR')}</span>
+        {nextStatus && (
+          <button 
+             onClick={() => onAdvance(order.id, nextStatus)}
+             className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${btnClass}`}
+          >
+            {btnLabel}
           </button>
         )}
       </div>
-      <p className="text-[10px] mb-1 opacity-40">{timeAgo(order.created_at)}</p>
-      <p className="font-semibold text-sm mb-3 text-white/90">{order.customer_name}</p>
-
-      {/* Items/Notes */}
-      <div className="space-y-1 mb-3">
-        <div className="text-xs text-white/70 border-l-2 border-orange-500/50 pl-2 py-1 bg-white/5 rounded">
-          {order.items.length > 0 ? (
-            order.items.map((item, i) => (
-              <div key={i} className="flex justify-between items-center py-0.5">
-                <span>{item.quantity}x {item.name}</span>
-              </div>
-            ))
-          ) : (
-            <span className="italic opacity-50">Sin detalles</span>
-          )}
-        </div>
-      </div>
-
-      {/* Total */}
-      <div className="flex justify-between font-bold text-sm mb-3 pt-3 border-t border-white/5">
-        <span className="text-white/40">TOTAL:</span>
-        <span className="text-green-400 font-mono">
-          {order.total > 0 ? `$${order.total.toLocaleString('es-AR')}` : '—'}
-        </span>
-      </div>
-
-      {/* Payment */}
-      <div className="flex items-center gap-1.5 mb-3 text-[10px] uppercase font-bold tracking-tighter opacity-50">
-        <span>{PAYMENT_ICONS[order.payment_method] || "💵"}</span>
-        <span>{PAYMENT_LABELS[order.payment_method] || order.payment_method}</span>
-      </div>
-
-      {/* Address / Pickup info */}
-      {pickup ? (
-        <div className="flex items-start gap-1.5 mb-4 text-xs bg-green-500/10 border border-green-500/20 rounded-lg px-2 py-1.5">
-          <Home className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-green-400" />
-          <span className="text-green-300 font-semibold">El cliente retira en el local</span>
-        </div>
-      ) : (
-        order.address && order.address !== 'No especificada' && (
-          <div className="flex items-start gap-1.5 mb-4 text-xs opacity-60">
-            <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-            <span>{order.address}</span>
-          </div>
-        )
-      )}
-
-      {/* CTA */}
-      {order.status === "cancelled" ? (
-        <div className="w-full text-center text-[10px] py-2 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 font-bold uppercase tracking-wider">
-          ❌ Pedido Cancelado
-        </div>
-      ) : btnLabel && nextStatus ? (
-        <button
-          onClick={() => onAdvance(order.id, nextStatus)}
-          className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:opacity-90 text-white text-sm font-bold py-2 rounded-lg transition-all shadow-lg shadow-orange-500/20"
-        >
-          {btnLabel}
-        </button>
-      ) : (
-        <div className="w-full text-center text-[10px] py-2 rounded-lg bg-white/5 text-white/40 border border-white/5">
-          ✅ Pedido Finalizado
-        </div>
-      )}
     </div>
   );
 }
@@ -145,24 +126,13 @@ function OrderCard({ order, onAdvance, onCancel }: { order: Order; onAdvance: (i
 export default function PedidosPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sound, setSound] = useState(true);
 
   const fetchOrders = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('pedidos')
       .select(`
-        id, 
-        order_number, 
-        status, 
-        delivery_type, 
-        payment_method, 
-        address, 
-        subtotal, 
-        delivery_fee, 
-        total, 
-        notes, 
-        created_at,
+        id, order_number, status, delivery_type, payment_method, address, subtotal, delivery_fee, total, notes, created_at,
         clientes(name, phone)
       `)
       .order('created_at', { ascending: false })
@@ -175,17 +145,10 @@ export default function PedidosPage() {
     }
 
     const transformed: Order[] = (data || []).map((o: any) => ({
-      id: o.id,
-      order_number: o.order_number,
-      status: o.status,
-      customer_name: o.clientes?.name || "Cliente WhatsApp",
-      customer_phone: o.clientes?.phone || "",
-      delivery_type: o.delivery_type,
-      payment_method: o.payment_method,
-      address: o.address || "",
-      subtotal: Number(o.subtotal),
-      delivery_fee: Number(o.delivery_fee),
-      total: Number(o.total),
+      id: o.id, order_number: o.order_number, status: o.status,
+      customer_name: o.clientes?.name || "Cliente", customer_phone: o.clientes?.phone || "",
+      delivery_type: o.delivery_type, payment_method: o.payment_method, address: o.address || "",
+      subtotal: Number(o.subtotal), delivery_fee: Number(o.delivery_fee), total: Number(o.total),
       items: o.notes ? [{ name: o.notes, price: 0, quantity: 1 }] : [],
       created_at: o.created_at,
     }));
@@ -199,24 +162,16 @@ export default function PedidosPage() {
 
     const channel = supabase
       .channel('realtime-pedidos')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pedidos' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            fetchOrders();
-            if (sound) {
-              const audio = new Audio('/notification.mp3');
-              audio.play().catch(() => {});
-            }
-          } else if (payload.eventType === 'UPDATE') {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, (payload) => {
+          if (payload.eventType === 'INSERT') { fetchOrders(); } 
+          else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as any;
             setOrders(prev => prev.map(o => o.id === updated.id ? { ...o, status: updated.status } : o));
-          } else if (payload.eventType === 'DELETE') {
+          } 
+          else if (payload.eventType === 'DELETE') {
             setOrders(prev => prev.filter(o => o.id !== payload.old.id));
           }
-        }
-      )
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -224,94 +179,134 @@ export default function PedidosPage() {
 
   const advanceOrder = async (id: string, next: OrderStatus) => {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status: next } : o));
-    const { error } = await supabase
-      .from('pedidos')
-      .update({ status: next, updated_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) { console.error('Error updating status:', error); fetchOrders(); }
-  };
-
-  const cancelOrder = async (id: string) => {
-    if (!confirm('¿Cancelar este pedido?')) return;
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'cancelled' } : o));
-    const { error } = await supabase
-      .from('pedidos')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) { console.error('Error cancelling order:', error); fetchOrders(); }
+    await supabase.from('pedidos').update({ status: next, updated_at: new Date().toISOString() }).eq('id', id);
   };
 
   const byStatus = (status: OrderStatus) => orders.filter(o => o.status === status);
 
+  const news = byStatus("new");
+  const preparing = byStatus("preparing");
+  const ready = byStatus("ready");
+
   return (
-    <div className="p-6 h-full overflow-hidden flex flex-col bg-transparent text-white">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-gradient-to-br from-orange-500 to-red-600 shadow-xl shadow-orange-500/20">
-            <Package className="w-6 h-6 text-white" />
+    <div className="flex-1 w-full bg-surface text-on-surface overflow-hidden flex flex-col pt-6 lg:pt-8 px-4 md:px-10 pb-6">
+      {/* Hero Header Area */}
+      <header className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-6 shrink-0">
+        <div>
+          <h2 className="text-3xl lg:text-5xl font-extrabold font-headline tracking-tight text-on-surface mb-2">Comandero Digital</h2>
+          <p className="text-sm lg:text-lg text-stone-500 font-medium">Visualización de flujo de cocina en tiempo real.</p>
+        </div>
+        {/* Quick Summary Dashboard */}
+        <div className="flex items-center gap-2 bg-surface-container-low p-2 rounded-2xl w-full md:w-auto overflow-x-auto">
+          <div className="px-4 lg:px-6 py-2 bg-white rounded-xl shadow-sm border border-stone-100 text-center min-w-24">
+            <span className="block text-[10px] font-black text-stone-400 uppercase tracking-widest">Nuevos</span>
+            <span className="text-xl lg:text-2xl font-black text-orange-600">{news.length.toString().padStart(2, '0')}</span>
           </div>
-          <div>
-            <h1 className="font-black text-2xl tracking-tight">KITCHEN BOARD</h1>
-            <p className="text-[10px] uppercase font-bold tracking-widest opacity-40">Gestión de pedidos en tiempo real</p>
+          <div className="px-4 lg:px-6 py-2 bg-white rounded-xl shadow-sm border border-stone-100 text-center min-w-24">
+            <span className="block text-[10px] font-black text-stone-400 uppercase tracking-widest">En Cocina</span>
+            <span className="text-xl lg:text-2xl font-black text-primary">{preparing.length.toString().padStart(2, '0')}</span>
+          </div>
+          <div className="px-4 lg:px-6 py-2 bg-white rounded-xl shadow-sm border border-stone-100 text-center min-w-24">
+            <span className="block text-[10px] font-black text-stone-400 uppercase tracking-widest">Listos</span>
+            <span className="text-xl lg:text-2xl font-black text-green-600">{ready.length.toString().padStart(2, '0')}</span>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setSound(s => !s)} className="btn-ghost flex items-center gap-2 text-xs font-bold uppercase transition-all hover:bg-white/5 px-4 py-2 rounded-xl">
-            {sound ? <Volume2 className="w-4 h-4 text-orange-400" /> : <VolumeX className="w-4 h-4 text-red-400" />}
-            Sonido {sound ? "ACTIVO" : "SILENCIO"}
+      </header>
+
+      {/* Kanban Board Section */}
+      <section className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 overflow-hidden min-h-0">
+        
+        {/* Column: NUEVOS */}
+        <div className="flex flex-col gap-4 bg-stone-100/50 rounded-3xl p-4 border border-stone-200/50 overflow-hidden h-full">
+          <div className="flex items-center justify-between px-2 mb-2 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-orange-500 animate-pulse"></div>
+              <h3 className="font-headline font-bold text-lg text-stone-700 uppercase tracking-tight">Nuevos</h3>
+            </div>
+            <span className="bg-orange-100 text-orange-700 text-xs font-black px-2 py-1 rounded-lg">{news.length} Pedidos</span>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pb-4">
+            {news.length === 0 && !loading && (
+               <div className="flex flex-col items-center justify-center p-10 text-stone-400 opacity-50">
+                  <span className="material-symbols-outlined text-4xl mb-2">inbox</span>
+                  <span className="text-xs uppercase font-bold tracking-widest">Sin Nuevos</span>
+               </div>
+            )}
+            {news.map(order => <OrderCard key={order.id} order={order} onAdvance={advanceOrder} />)}
+          </div>
+        </div>
+
+        {/* Column: EN PREPARACIÓN */}
+        <div className="flex flex-col gap-4 bg-stone-100/50 rounded-3xl p-4 border border-stone-200/50 overflow-hidden h-full">
+          <div className="flex items-center justify-between px-2 mb-2 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-primary"></div>
+              <h3 className="font-headline font-bold text-lg text-stone-700 uppercase tracking-tight">En Preparación</h3>
+            </div>
+            <span className="bg-primary/10 text-primary text-xs font-black px-2 py-1 rounded-lg">{preparing.length} Pedidos</span>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pb-4">
+            {preparing.length === 0 && !loading && (
+               <div className="flex flex-col items-center justify-center p-10 text-stone-400 opacity-50">
+                  <span className="material-symbols-outlined text-4xl mb-2">blender</span>
+                  <span className="text-xs uppercase font-bold tracking-widest">Cocina Libre</span>
+               </div>
+            )}
+            {preparing.map(order => <OrderCard key={order.id} order={order} onAdvance={advanceOrder} />)}
+          </div>
+        </div>
+
+        {/* Column: LISTOS PARA ENTREGAR */}
+        <div className="flex flex-col gap-4 bg-stone-100/50 rounded-3xl p-4 border border-stone-200/50 overflow-hidden h-full">
+          <div className="flex items-center justify-between px-2 mb-2 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+              <h3 className="font-headline font-bold text-lg text-stone-700 uppercase tracking-tight">Listos</h3>
+            </div>
+            <span className="bg-green-100 text-green-700 text-xs font-black px-2 py-1 rounded-lg">{ready.length} Pedidos</span>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar pb-4">
+            {ready.length === 0 && !loading && (
+               <div className="flex flex-col items-center justify-center p-10 text-stone-400 opacity-50">
+                  <span className="material-symbols-outlined text-4xl mb-2">takeout_dining</span>
+                  <span className="text-xs uppercase font-bold tracking-widest">Vacío</span>
+               </div>
+            )}
+            {ready.map(order => <OrderCard key={order.id} order={order} onAdvance={advanceOrder} />)}
+          </div>
+        </div>
+
+      </section>
+
+      {/* Floating Quick Action Area / Footer */}
+      <section className="mt-6 flex shrink-0 w-full overflow-hidden">
+        <div className="w-full bg-surface-container border border-surface-variant rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white shadow-sm border border-stone-100 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-primary text-2xl">bolt</span>
+            </div>
+            <div>
+              <h4 className="text-lg font-headline font-bold text-on-surface">Modo Alta Demanda</h4>
+              <p className="text-stone-500 text-sm max-w-sm">Optimiza la preparación agrupando platos idénticos de diferentes pedidos de manera automática.</p>
+            </div>
+          </div>
+          <button className="px-6 py-3 bg-surface-container-lowest border border-stone-200 text-stone-700 rounded-xl font-bold hover:bg-white hover:text-primary transition-all shadow-sm">
+            Activar pronto
           </button>
-          <button onClick={fetchOrders} className="btn-ghost flex items-center gap-2 text-xs font-bold uppercase transition-all hover:bg-white/5 px-4 py-2 rounded-xl border border-white/5">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Sincronizar
-          </button>
+        </div>
+      </section>
+      
+      {/* Map Contextual Indicator */}
+      <div className="hidden lg:flex fixed bottom-6 right-6 items-center gap-3 bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl border border-stone-200 z-40">
+        <div className="w-10 h-10 rounded-xl overflow-hidden grayscale bg-surface-container animate-pulse flex items-center justify-center">
+           <span className="material-symbols-outlined text-stone-400">map</span>
+        </div>
+        <div>
+          <span className="block text-[10px] font-bold text-stone-400 uppercase leading-none mb-1">Sucursal Centro</span>
+          <span className="text-xs font-bold text-stone-700">Abierto • Alta demanda</span>
         </div>
       </div>
 
-      {/* Kanban */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden pb-4">
-        <div className="flex gap-6 h-full min-w-max">
-          {COLUMNS.map(col => {
-            const colOrders = byStatus(col.key);
-            return (
-              <div key={col.key} className="flex flex-col w-72 h-full rounded-2xl bg-white/[0.02] border border-white/[0.05] overflow-hidden">
-                <div className="flex items-center gap-3 px-4 py-4 bg-white/[0.03]" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="p-2 rounded-lg" style={{ background: `${col.color}22`, color: col.color }}>
-                    {col.icon}
-                  </div>
-                  <span className="font-bold text-xs uppercase tracking-widest">{col.label}</span>
-                  <span className="ml-auto text-xs font-black w-6 h-6 rounded-full flex items-center justify-center bg-white/10" style={{ color: col.color }}>
-                    {colOrders.length}
-                  </span>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                  {loading && colOrders.length === 0 ? (
-                    <div className="animate-pulse space-y-3">
-                      <div className="h-32 bg-white/5 rounded-xl" />
-                      <div className="h-32 bg-white/5 rounded-xl" />
-                    </div>
-                  ) : colOrders.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full opacity-10 py-20 grayscale">
-                      <Package className="w-12 h-12 mb-2" />
-                      <p className="text-[10px] font-bold uppercase tracking-widest">Sin Pedidos</p>
-                    </div>
-                  ) : (
-                    colOrders.map(order => (
-                      <OrderCard key={order.id} order={order} onAdvance={advanceOrder} onCancel={cancelOrder} />
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.1); }
-      `}</style>
     </div>
   );
 }
