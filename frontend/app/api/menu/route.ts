@@ -10,19 +10,15 @@ function safeGet(row: any, header: string): string {
     try { return row.get(header) || ''; } catch { return ''; }
 }
 
-let doc: GoogleSpreadsheet | null = null;
-
-async function getDoc() {
-    if (!doc) {
-        const auth = new JWT({
-            email: SERVICE_EMAIL,
-            key: PRIVATE_KEY,
-            scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-        });
-        doc = new GoogleSpreadsheet(SHEET_ID, auth);
-        await doc.loadInfo();
-    }
-    return doc;
+async function getDoc(): Promise<GoogleSpreadsheet> {
+    const auth = new JWT({
+        email: SERVICE_EMAIL,
+        key: PRIVATE_KEY,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+    const spreadsheet = new GoogleSpreadsheet(SHEET_ID, auth);
+    await spreadsheet.loadInfo();
+    return spreadsheet;
 }
 
 // GET — Obtener todos los productos
