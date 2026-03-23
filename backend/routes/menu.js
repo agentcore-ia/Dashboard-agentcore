@@ -37,20 +37,43 @@ async function ensureDocLoad(req, res, next) {
     next();
 }
 
+// Helper para obtener columnas sin que crashee si no existe
+function safeGet(row, header) {
+    try {
+        return row.get(header) || '';
+    } catch (e) {
+        return '';
+    }
+}
+
+// Helper para setear columnas solo si el header existe
+function safeSet(row, header, value) {
+    try {
+        row.set(header, value);
+    } catch (e) {
+        // Ignorar si la columna no existe en el sheet
+    }
+}
+
 // 1. OBTENER EL MENÚ (GET /menu)
 router.get('/', ensureDocLoad, async (req, res) => {
     try {
         const sheet = doc.sheetsByIndex[0];
         const rows = await sheet.getRows();
 
-        const menu = rows.map(row => ({
-            producto: row.get('Producto') || '',
-            tipo: row.get('Tipo') || 'Otro',
-            disponible: row.get('Disponible') || 'No',
-            precio: row.get('Precio') || '0',
-            ingredientes: row.get('Ingredientes') || '',
-            aliases: row.get('Aliases') || ''
-        }));
+        const menu = rows
+            .filter(row => {
+                const prod = safeGet(row, 'Producto');
+                return prod && prod.trim() !== '';
+            })
+            .map(row => ({
+                producto: safeGet(row, 'Producto'),
+                tipo: safeGet(row, 'Tipo') || 'Otro',
+                disponible: safeGet(row, 'Disponible') || 'No',
+                precio: safeGet(row, 'Precio') || '0',
+                ingredientes: safeGet(row, 'Ingredientes'),
+                aliases: safeGet(row, 'Aliases')
+            }));
 
         res.json(menu);
     } catch (err) {
@@ -126,11 +149,11 @@ router.put('/:producto', ensureDocLoad, async (req, res) => {
         if (!row) return res.status(404).json({ error: "Producto no encontrado" });
 
         row.set('Producto', data.producto.trim());
-        row.set('Tipo', data.tipo || 'Otro');
-        row.set('Disponible', data.disponible);
-        row.set('Precio', numericPrice);
-        row.set('Ingredientes', data.ingredientes || '');
-        row.set('Aliases', data.aliases || '');
+        safeSet(row, 'Tipo', data.tipo || 'Otro');
+        safeSet(row, 'Disponible', data.disponible);
+        safeSet(row, 'Precio', numericPrice);
+        safeSet(row, 'Ingredientes', data.ingredientes || '');
+        safeSet(row, 'Aliases', data.aliases || '');
         
         await row.save();
         
