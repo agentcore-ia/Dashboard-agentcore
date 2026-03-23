@@ -47,8 +47,8 @@ io.on('connection', (socket) => {
   socket.on('join-restaurant', (id) => socket.join(`restaurant-${id}`));
 });
 
-// FORZAMOS EL PUERTO 3001 PARA SOLUCIONAR EL CONFLICTO CON EASYPANEL
-const PORT = 3001;
+// FORZAMOS EL PUERTO 3001 PARA LOCAL, PERO RESPETAMOS EL PORT INYECTADO POR EASYPANEL (3000)
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 SERVIDOR FORZADO EN PUERTO ${PORT}`);
+  console.log(`🚀 SERVIDOR ESCUCHANDO EN PUERTO ${PORT}`);
 });
