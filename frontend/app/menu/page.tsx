@@ -290,7 +290,7 @@ export default function MenuPage() {
                   </div>
                   <div className="min-w-0 flex-1 pr-4">
                     <div className="flex flex-col">
-                      <h3 className="font-bold text-on-surface truncate font-headline text-lg">{product.name || "Sin nombre"}</h3>
+                      <h3 className="font-bold text-on-surface font-headline text-lg leading-tight mb-1">{product.name || "Sin nombre"}</h3>
                       <span className={`text-md font-black ${product.available ? 'text-primary' : 'text-stone-400'}`}>
                          ${Number(product.price).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </span>
