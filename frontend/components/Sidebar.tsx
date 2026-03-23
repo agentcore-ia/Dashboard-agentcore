@@ -2,24 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  MessageSquare,
-  ShoppingBag,
-  BarChart2,
-  Megaphone,
-  Settings,
-  Zap,
-  UtensilsCrossed,
-  X,
-} from "lucide-react";
+import Image from "next/image";
 
 const navItems = [
-  { href: "/conversaciones", label: "Conversaciones", icon: MessageSquare },
-  { href: "/pedidos", label: "Pedidos", icon: ShoppingBag },
-  { href: "/menu", label: "Menú y Stock", icon: UtensilsCrossed },
-  { href: "/analytics", label: "Analítica", icon: BarChart2 },
-  { href: "/campanas", label: "Campañas", icon: Megaphone },
-  { href: "/configuracion-ia", label: "Configuración IA", icon: Settings },
+  { href: "/", label: "Inicio", icon: "home" },
+  { href: "/conversaciones", label: "Chats", icon: "chat" },
+  { href: "/pedidos", label: "Pedidos", icon: "restaurant_menu" },
+  { href: "/analytics", label: "Analíticas", icon: "analytics" },
+  { href: "/modulos", label: "Módulos", icon: "smart_toy" },
+  { href: "/ajustes", label: "Ajustes", icon: "settings" },
 ];
 
 export default function Sidebar({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => void }) {
@@ -27,84 +18,61 @@ export default function Sidebar({ isOpen, onClose }: { isOpen?: boolean; onClose
 
   return (
     <>
-      {/* Mobile Overlay */}
-      {isOpen && (
-        <div className="lg:hidden mobile-overlay" onClick={onClose} />
-      )}
-
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 flex flex-col h-screen border-r transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col pt-6 pb-6 bg-stone-50 h-screen border-r border-stone-200 transition-transform duration-300 lg:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
-        style={{
-          width: "var(--sidebar-width)",
-          minWidth: "var(--sidebar-width)",
-          background: "rgba(10,10,15,0.98)",
-          borderColor: "rgba(255,255,255,0.07)",
-        }}
+        style={{ width: "var(--sidebar-width)", minWidth: "var(--sidebar-width)" }}
       >
-        {/* Logo */}
-        <div className="flex items-center justify-between px-4 py-5">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg,#f97316,#ef4444)" }}
-            >
-              <Zap className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-bold leading-tight">Beastie</p>
-              <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
-                Beast Burgers
-              </p>
-            </div>
+        {/* Logo Section */}
+        <div className="px-6 mb-10 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-500 overflow-hidden flex items-center justify-center shrink-0">
+             <Image 
+                src="/logo.png" 
+                alt="Order Pilot Logo" 
+                width={40} 
+                height={40}
+                className="object-cover w-full h-full"
+             />
           </div>
-          <button onClick={onClose} className="lg:hidden p-1 text-gray-500 hover:text-white">
-            <X className="w-5 h-5" />
-          </button>
+          <div>
+            <h1 className="text-2xl font-black text-orange-900 tracking-tight leading-none font-headline">
+              Order Pilot
+            </h1>
+          </div>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-2 space-y-1 mt-2">
-          {navItems.map(({ href, label, icon: Icon }) => {
-            const active = pathname.startsWith(href);
+        {/* Navigation Links */}
+        <nav className="flex-1 px-4 space-y-1 overflow-y-auto no-scrollbar">
+          {navItems.map(({ href, label, icon }) => {
+            // Note: Since Home is "/", exact match is preferred for active state,
+            // otherwise all routes starting with "/" will trigger it.
+            const active = href === "/" ? pathname === href : pathname.startsWith(href);
+
             return (
               <Link
                 key={href}
                 href={href}
                 onClick={onClose}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-headline font-semibold text-sm transition-all duration-200 ${
                   active
-                    ? "nav-active"
-                    : "text-gray-400 hover:text-white hover:bg-white/5"
+                    ? "text-orange-900 border-r-4 border-orange-900 bg-orange-50 scale-[0.98] active:opacity-80"
+                    : "text-stone-500 hover:text-stone-900 hover:bg-stone-100"
                 }`}
               >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {label}
+                <span className="material-symbols-outlined">{icon}</span>
+                <span>{label}</span>
               </Link>
             );
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="px-4 py-4">
-          <div
-            className="rounded-lg px-3 py-2"
-            style={{ background: "rgba(255,255,255,0.04)" }}
-          >
-            <p
-              className="text-xs font-semibold"
-              style={{ color: "rgba(255,255,255,0.5)" }}
-            >
-              🟢 Beast Burgers
-            </p>
-            <p
-              className="text-xs mt-0.5"
-              style={{ color: "rgba(255,255,255,0.3)" }}
-            >
-              São Paulo, SP
-            </p>
-          </div>
+        {/* Bottom CTA Action */}
+        <div className="px-4 mt-auto pt-6">
+          <button className="w-full bg-primary text-on-primary py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-container transition-all">
+            <span className="material-symbols-outlined">add_circle</span>
+            <span>Nuevo Pedido</span>
+          </button>
         </div>
       </aside>
     </>
