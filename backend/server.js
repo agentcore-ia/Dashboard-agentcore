@@ -100,8 +100,8 @@ io.on('connection', (socket) => {
 });
 
 // ── Listen ───────────────────────────────────────────────
-// Use process.env.PORT first (injected by Easypanel/Nixpacks), fallback 3001 for local dev
-const PORT = process.env.PORT || 3001;
+// MUST match the EXPOSE in the Dockerfile (3001) — Traefik routes to this port
+const PORT = 3001;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SERVIDOR ESCUCHANDO EN PUERTO ${PORT}`);
 });
