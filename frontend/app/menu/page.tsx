@@ -14,8 +14,8 @@ interface Product {
   aliases?: string;
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://dashboard-agentcore-backend.8zp1cp.easypanel.host';
-const API_URL = BASE_URL.endsWith('/api') ? BASE_URL : `${BASE_URL}/api`;
+// Use the Next.js API route directly — no external backend needed
+const API_URL = '/api';
 
 const CATEGORY_MAP: Record<string, { icon: string; colorClass: string }> = {
   Pizzas: { icon: "local_pizza", colorClass: "bg-orange-100 text-orange-800" },
@@ -77,10 +77,10 @@ export default function MenuPage() {
     setProducts(prev => prev.map(p => p.id === product.id ? { ...p, available: newStatus } : p));
     
     try {
-       const res = await fetch(`${API_URL}/menu/${encodeURIComponent(product.name)}/disponible`, {
+       const res = await fetch(`${API_URL}/menu`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ disponible: newStatus ? 'Sí' : 'No' })
+          body: JSON.stringify({ producto: product.name, disponible: newStatus ? 'Sí' : 'No' })
        });
        if (!res.ok) throw new Error("Sync failed");
     } catch (err) {
@@ -128,10 +128,10 @@ export default function MenuPage() {
 
       let res;
       if (editingProduct) {
-         res = await fetch(`${API_URL}/menu/${encodeURIComponent(editingProduct.name)}`, {
+         res = await fetch(`${API_URL}/menu`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ ...payload, originalName: editingProduct.name })
          });
       } else {
          res = await fetch(`${API_URL}/menu`, {
@@ -178,7 +178,7 @@ export default function MenuPage() {
     
     setIsSaving(true);
     try {
-       const res = await fetch(`${API_URL}/menu/${encodeURIComponent(editingProduct.name)}`, {
+       const res = await fetch(`${API_URL}/menu?producto=${encodeURIComponent(editingProduct.name)}`, {
           method: 'DELETE'
        });
        if (res.ok) {
