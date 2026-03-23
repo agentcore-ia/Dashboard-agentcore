@@ -14,7 +14,7 @@ interface Product {
   aliases?: string;
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://dashboard-agentcore-backend.8zp1cp.easypanel.host';
 const API_URL = BASE_URL.endsWith('/api') ? BASE_URL : `${BASE_URL}/api`;
 
 const CATEGORY_MAP: Record<string, { icon: string; colorClass: string }> = {
