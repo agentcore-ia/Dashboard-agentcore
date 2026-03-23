@@ -14,7 +14,8 @@ interface Product {
   aliases?: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_URL = BASE_URL.endsWith('/api') ? BASE_URL : `${BASE_URL}/api`;
 
 const CATEGORY_MAP: Record<string, { icon: string; colorClass: string }> = {
   Pizzas: { icon: "local_pizza", colorClass: "bg-orange-100 text-orange-800" },
