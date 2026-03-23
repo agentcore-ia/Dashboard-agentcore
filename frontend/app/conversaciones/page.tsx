@@ -1,12 +1,13 @@
 "use client";
 
-// Force update to ensure deployment: 2026-03-18 01:00
+// Force update to ensure deployment: 2026-03-22
 import { useState, useEffect, useRef } from "react";
-import { Search, Filter, Bot, User, Send, Paperclip, MoreVertical } from "lucide-react";
+import { Search, Bot, User, Send, Paperclip, MoreVertical, PersonStanding } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
 interface Conversation {
   id: string;
+  cliente_id: string;
   customer_name: string;
   customer_phone: string;
   last_message: string | null;
@@ -24,6 +25,15 @@ interface Message {
   sender: string;
   created_at: string;
   read: boolean;
+}
+
+interface CustomerOrder {
+  id: string;
+  order_number: number;
+  total: number;
+  status: string;
+  notes: string | null;
+  created_at: string;
 }
 
 function timeAgo(dateStr: string) {
@@ -48,10 +58,12 @@ export default function ConversasPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
+  const [customerTotalSpent, setCustomerTotalSpent] = useState(0);
+  
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [aiActive, setAiActive] = useState(true);
-  const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [loading, setLoading] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +74,7 @@ export default function ConversasPage() {
       const { data: convs, error } = await supabase
         .from('conversaciones')
         .select(`
-          id, status, ai_active, last_message_at, created_at,
+          id, status, ai_active, last_message_at, created_at, cliente_id,
           clientes!inner(name, phone)
         `)
         .eq('restaurant_id', RESTAURANT_ID)
@@ -74,7 +86,6 @@ export default function ConversasPage() {
         return;
       }
 
-      // Fetch last message and unread count for each conversation
       const enrichedConvs: Conversation[] = await Promise.all(
         (convs || []).map(async (c: any) => {
           const { data: lastMsg } = await supabase
@@ -96,6 +107,7 @@ export default function ConversasPage() {
 
           return {
             id: c.id,
+            cliente_id: c.cliente_id,
             customer_name: cliente?.name || 'Sin nombre',
             customer_phone: cliente?.phone || '',
             last_message: lastMsg?.content || null,
@@ -117,23 +129,21 @@ export default function ConversasPage() {
     fetchConversations();
   }, []);
 
-  // Load messages when conversation changes
+  // Load messages & order history when conversation changes
   useEffect(() => {
     if (!selected) return;
     setAiActive(selected.ai_active);
 
-    async function fetchMessages() {
-      const { data, error } = await supabase
+    async function fetchData() {
+      // Fetch Messages
+      const { data: msgsData, error: msgsError } = await supabase
         .from('mensajes')
         .select('*')
         .eq('conversacion_id', selected!.id)
         .order('created_at', { ascending: true });
 
-      if (error) {
-        console.error('Error fetching messages:', error);
-        return;
-      }
-      setMessages(data || []);
+      if (msgsError) console.error('Error fetching messages:', msgsError);
+      else setMessages(msgsData || []);
 
       // Mark messages as read
       await supabase
@@ -142,9 +152,26 @@ export default function ConversasPage() {
         .eq('conversacion_id', selected!.id)
         .eq('sender', 'customer')
         .eq('read', false);
+
+      // Fetch Order history for customer profile
+      if (selected?.cliente_id) {
+        const { data: ordersData, error: ordersError } = await supabase
+          .from('pedidos')
+          .select('id, order_number, total, status, notes, created_at')
+          .eq('cliente_id', selected.cliente_id)
+          .order('created_at', { ascending: false });
+        
+        if (ordersError) {
+          console.error("Error fetching orders for customer:", ordersError);
+        } else {
+          setCustomerOrders(ordersData || []);
+          const totalSpent = (ordersData || []).reduce((sum, order) => sum + Number(order.total || 0), 0);
+          setCustomerTotalSpent(totalSpent);
+        }
+      }
     }
 
-    fetchMessages();
+    fetchData();
   }, [selected]);
 
   // Subscribe to new messages in realtime
@@ -156,17 +183,12 @@ export default function ConversasPage() {
         { event: 'INSERT', schema: 'public', table: 'mensajes' },
         (payload) => {
           const newMsg = payload.new as Message;
-
-          // If the message belongs to the selected conversation, add it
           if (selected && newMsg.conversacion_id === selected.id) {
             setMessages(prev => {
-              // Avoid duplicates
               if (prev.find(m => m.id === newMsg.id)) return prev;
               return [...prev, newMsg];
             });
           }
-
-          // Update the conversation list (last message, unread count)
           setConversations(prev =>
             prev.map(c => {
               if (c.id === newMsg.conversacion_id) {
@@ -194,7 +216,6 @@ export default function ConversasPage() {
                 : c
             )
           );
-          // Update selected conversation's ai_active
           if (selected && selected.id === updated.id) {
             setAiActive(updated.ai_active);
             setSelected(prev => prev ? { ...prev, ai_active: updated.ai_active } : prev);
@@ -203,12 +224,9 @@ export default function ConversasPage() {
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [selected]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -224,7 +242,6 @@ export default function ConversasPage() {
     setInput("");
 
     // Invoke the send-whatsapp-message Edge Function
-    // disable_ai: true => human is taking over manually from the dashboard
     const { data, error } = await supabase.functions.invoke('send-whatsapp-message', {
       body: {
         conversacion_id: selected.id,
@@ -235,8 +252,7 @@ export default function ConversasPage() {
 
     if (error) {
       console.error('Error sending message:', error);
-      // Fallback: If edge function fails (e.g. not deployed or secrets missing), 
-      // just insert into DB so the user sees it in the chat, even if it didn't send to WA.
+      // Fallback
       await supabase.from('mensajes').insert({
         conversacion_id: selected.id,
         content,
@@ -269,243 +285,297 @@ export default function ConversasPage() {
 
   const handleSelectConv = (conv: Conversation) => {
     setSelected(conv);
-    setMobileView("chat");
     // Reset unread count
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
 
   return (
-    <div className="flex h-full lg:h-screen w-full relative overflow-hidden" style={{ height: "calc(100vh - 56px)" }}>
-      {/* Left: conversation list */}
-      <div
-        className={`absolute inset-0 lg:static lg:block border-r transition-transform duration-300 z-10 lg:z-auto bg-gray-950 lg:bg-transparent lg:w-[320px] lg:min-w-[320px] lg:translate-x-0 ${
-          mobileView === "list" ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
-        style={{ background: "rgba(10,10,20,0.95)", borderColor: "rgba(255,255,255,0.07)" }}
-      >
-        <div className="w-full h-full flex flex-col">
-          {/* Header */}
-          <div className="px-4 pt-5 pb-3">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h1 className="font-bold text-base">Conversaciones</h1>
-                <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>{filteredConvs.length} chats activos</p>
-              </div>
-              <button className="btn-ghost text-xs">
-                <Filter className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5" style={{ color: "rgba(255,255,255,0.3)" }} />
-              <input
-                className="input-dark pl-8 text-sm"
-                placeholder="Buscar conversación..."
+    <div className="flex w-full h-full bg-surface-container-low overflow-hidden rounded-2xl shadow-sm border border-stone-200" style={{ height: "calc(100vh - 120px)" }}>
+      {/* 1. Chat List Panel */}
+      <section className="w-[380px] min-w-[380px] bg-surface flex flex-col border-r border-stone-200 overflow-hidden">
+        <div className="p-6">
+          <h1 className="text-2xl font-black font-headline text-stone-900 leading-none">Chats</h1>
+          <p className="text-stone-500 text-sm mt-1">{filteredConvs.length} conversaciones activas</p>
+          <div className="mt-4 relative w-full focus-within:ring-2 focus-within:ring-primary/50 rounded-full">
+             <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-stone-400 text-lg">search</span>
+             <input 
+                className="w-full pl-10 pr-4 py-2 bg-stone-100 border-none rounded-full focus:ring-0 text-sm font-body text-stone-700 outline-none" 
+                placeholder="Buscar conversaciones..." 
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* List */}
-          <div className="flex-1 overflow-y-auto px-2 space-y-0.5 pb-20 lg:pb-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500"></div>
-              </div>
-            ) : filteredConvs.length === 0 ? (
-              <div className="flex items-center justify-center py-12">
-                <p className="text-sm text-white/40">No hay conversaciones</p>
-              </div>
-            ) : (
-              filteredConvs.map((conv, i) => {
-                const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
-                const isSelected = selected?.id === conv.id;
-                return (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleSelectConv(conv)}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-100 ${
-                      isSelected
-                        ? "bg-white/8 border border-white/10"
-                        : "hover:bg-white/4"
-                    }`}
-                  >
-                    {/* Avatar */}
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                      style={{ background: color + "33", color }}
-                    >
-                      {getInitial(conv.customer_name)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium truncate">{conv.customer_name}</span>
-                        <span className="text-xs ml-2 flex-shrink-0" style={{ color: "rgba(255,255,255,0.35)" }}>
-                          {timeAgo(conv.last_message_at)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between mt-0.5 gap-1">
-                        <span className="text-xs truncate text-white/50">
-                          {conv.last_message || "..."}
-                        </span>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          {conv.unread_count > 0 && (
-                            <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center">
-                              {conv.unread_count}
-                            </span>
-                          )}
-                          {conv.ai_active ? (
-                            <span className="badge-ai flex-shrink-0 ml-1">IA</span>
-                          ) : (
-                            <span className="badge-human flex-shrink-0 ml-1">Humano</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })
-            )}
+             />
           </div>
         </div>
-      </div>
 
-      {/* Right: chat window */}
-      <div 
-        className={`absolute inset-0 lg:static lg:flex lg:flex-1 bg-gray-950 lg:bg-transparent transition-transform duration-300 z-20 lg:z-auto lg:translate-x-0 ${
-          mobileView === "chat" ? "translate-x-0 flex flex-col" : "translate-x-full lg:translate-x-0 hidden lg:flex lg:flex-col"
-        }`} 
-        style={{ background: "rgba(8,8,14,0.98)" }}
-      >
-        <div className="flex flex-col h-full w-full" style={{ background: "rgba(8,8,14,0.8)" }}>
-          {selected ? (
-            <>
-              {/* Chat header */}
-              <div
-                className="flex items-center justify-between px-3 lg:px-5 py-3 border-b bg-gray-900/50 backdrop-blur-sm lg:bg-transparent"
-                style={{ borderColor: "rgba(255,255,255,0.07)", minHeight: "64px" }}
-              >
-                <div className="flex items-center gap-2 lg:gap-3">
-                  <button 
-                    onClick={() => setMobileView("list")}
-                    className="lg:hidden p-2 -ml-2 text-white/70 hover:text-white"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                  </button>
-                  <div
-                    className="w-8 h-8 lg:w-9 lg:h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                    style={{ background: "#f9731633", color: "#fb923c" }}
-                  >
-                    {getInitial(selected.customer_name)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate">{selected.customer_name}</p>
-                    <p className="text-[10px] lg:text-xs truncate text-white/50">{selected.customer_phone}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 lg:gap-2 flex-shrink-0">
-                  <button
-                    onClick={toggleAI}
-                    className={`text-[10px] lg:text-xs px-2 lg:px-3 py-1.5 rounded-lg font-medium transition-all ${
-                      aiActive
-                        ? "bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30"
-                        : "bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30"
-                    }`}
-                  >
-                    <span className="hidden sm:inline">{aiActive ? "Tomar Control" : "Volver a IA"}</span>
-                    <span className="sm:hidden">{aiActive ? "Control" : "Auto IA"}</span>
-                  </button>
-                  <button className="btn-ghost w-8 h-8 p-0 flex items-center justify-center">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-4 lg:px-5 py-4 space-y-3 pb-20 lg:pb-4">
-                {messages.length === 0 && (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>No hay mensajes aún</p>
-                  </div>
-                )}
-                {messages.map(msg => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.sender === "customer" ? "justify-start" : "justify-end"} fade-in`}
-                  >
-                    <div
-                      className={`max-w-[85%] lg:max-w-sm px-3 lg:px-4 py-2.5 text-sm leading-relaxed ${
-                        msg.sender === "customer"
-                          ? "bubble-customer"
-                          : msg.sender === "ai"
-                          ? "bubble-ai"
-                          : "bubble-human"
-                      }`}
-                      style={{ whiteSpace: "pre-wrap" }}
-                    >
-                      {msg.sender !== "customer" && (
-                        <div className="flex items-center gap-1 mb-1">
-                          {msg.sender === "ai" ? (
-                            <><Bot className="w-3 h-3" style={{ color: "#fb923c" }} /><span className="text-xs font-medium" style={{ color: "#fb923c" }}>IA</span></>
-                          ) : (
-                            <><User className="w-3 h-3" style={{ color: "#60a5fa" }} /><span className="text-xs font-medium" style={{ color: "#60a5fa" }}>Agente</span></>
-                          )}
-                        </div>
-                      )}
-                      {msg.content}
-                      <div className="text-right mt-1">
-                        <span className="text-[10px] lg:text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
-                          {new Date(msg.created_at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <div ref={bottomRef} />
-              </div>
-
-              {/* Input */}
-              <div
-                className="px-3 lg:px-4 py-3 border-t bg-gray-950 lg:bg-transparent absolute bottom-0 left-0 right-0 lg:static"
-                style={{ borderColor: "rgba(255,255,255,0.07)" }}
-              >
-                <div className="flex items-center gap-2">
-                  <button className="btn-ghost w-9 h-9 flex items-center justify-center p-0 flex-shrink-0">
-                    <Paperclip className="w-4 h-4" />
-                  </button>
-                  <input
-                    className="input-dark flex-1 text-sm bg-white/5"
-                    placeholder={aiActive ? "IA hablando (tome control)" : "Mensaje..."}
-                    value={input}
-                    disabled={aiActive}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleSend()}
-                    style={{ fontSize: "16px" /* Prevents iOS zoom */ }}
-                  />
-                  <button
-                    onClick={handleSend}
-                    disabled={!input.trim() || aiActive}
-                    className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-opacity"
-                    style={{
-                      background: input.trim() && !aiActive
-                        ? "linear-gradient(135deg,#f97316,#ef4444)"
-                        : "rgba(255,255,255,0.06)",
-                      opacity: !input.trim() || aiActive ? 0.4 : 1,
-                    }}
-                  >
-                    <Send className="w-4 h-4 text-white" />
-                  </button>
-                </div>
-              </div>
-            </>
+        <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-2 no-scrollbar">
+          {loading ? (
+             <div className="flex justify-center p-8"><div className="animate-spin w-6 h-6 border-b-2 border-primary rounded-full"></div></div>
+          ) : filteredConvs.length === 0 ? (
+             <div className="text-center p-8 text-stone-400 text-sm">No hay conversaciones activas.</div>
           ) : (
-            <div className="flex-1 flex items-center justify-center hidden lg:flex">
-              <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)" }}>Seleccione una conversación</p>
-            </div>
+            filteredConvs.map((conv, i) => {
+              const isSelected = selected?.id === conv.id;
+              
+              // Calculate status tags
+              const hasUnread = conv.unread_count > 0;
+              let statusTag = '';
+              let statusClass = '';
+
+              if (hasUnread) {
+                 statusTag = "NUEVO";
+                 statusClass = "bg-tertiary text-on-tertiary";
+              } else if (conv.ai_active) {
+                 statusTag = "IA RESPONDIENDO";
+                 statusClass = "bg-primary-fixed text-on-primary-fixed-variant";
+              } else {
+                 statusTag = "INTERVENIDO POR HUMANO";
+                 statusClass = "bg-secondary-container text-on-secondary-container";
+              }
+
+              return (
+                <div 
+                  key={conv.id}
+                  onClick={() => handleSelectConv(conv)}
+                  className={`p-4 rounded-2xl transition-all cursor-pointer shadow-sm border ${
+                    isSelected 
+                      ? "bg-surface-container-low border-l-4 border-l-primary border-transparent" 
+                      : "hover:bg-surface-container-low border-transparent bg-transparent"
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="font-headline font-bold text-stone-900">{conv.customer_name}</span>
+                    <span className="text-[10px] font-medium text-stone-400">{timeAgo(conv.last_message_at)}</span>
+                  </div>
+                  <p className={`text-xs ${hasUnread ? 'text-stone-800 font-semibold' : 'text-stone-500'} line-clamp-1 mb-2`}>
+                    {conv.last_message || "..."}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className={`${statusClass} text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider`}>
+                      {statusTag}
+                    </span>
+                    {hasUnread && (
+                       <div className="w-5 h-5 flex items-center justify-center bg-primary rounded-full text-white font-bold text-[10px]">
+                         {conv.unread_count}
+                       </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
-      </div>
+      </section>
+
+      {/* 2. Chat Window Panel */}
+      <section className="flex-1 bg-surface-container-low flex flex-col relative overflow-hidden">
+        {selected ? (
+          <>
+            {/* Header Ventana */}
+            <div className="h-20 flex-shrink-0 bg-surface-container-lowest px-8 flex items-center justify-between border-b border-stone-200">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-stone-200 flex items-center justify-center text-stone-500 font-headline font-bold uppercase">
+                  {getInitial(selected.customer_name)}
+                </div>
+                <div>
+                  <h2 className="font-headline font-extrabold text-stone-900 leading-tight">{selected.customer_name}</h2>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                    <span className="text-xs font-bold text-stone-400">{selected.customer_phone} • WhatsApp</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botones Accionables IA */}
+              <div className="flex items-center gap-3">
+                <div className={`px-4 py-2 ${aiActive ? 'bg-primary-fixed' : 'bg-surface-container-high'} rounded-full flex items-center gap-2 transition-colors`}>
+                  <span className={`material-symbols-outlined text-sm ${aiActive ? 'text-primary' : 'text-stone-400'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
+                    smart_toy
+                  </span>
+                  <span className={`text-xs font-bold ${aiActive ? 'text-on-primary-fixed-variant' : 'text-stone-500'}`}>
+                    {aiActive ? "IA Activa" : "IA Pausada"}
+                  </span>
+                </div>
+                <button 
+                  onClick={toggleAI}
+                  className={`${aiActive ? 'bg-primary text-on-primary' : 'bg-surface-container-lowest text-primary border-2 border-primary'} px-6 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/10 hover:scale-105 transition-transform active:scale-95`}
+                >
+                  {aiActive ? "Tomar Control" : "Reactivar IA"}
+                </button>
+                <button className="p-2 hover:bg-surface-container-high rounded-full transition-colors text-stone-500">
+                  <span className="material-symbols-outlined">more_vert</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+              {messages.length === 0 && (
+                <div className="flex justify-center mt-10 text-stone-400 text-sm">
+                   Aún no hay mensajes en esta conversación.
+                </div>
+              )}
+              {messages.map((msg) => {
+                const isCustomer = msg.sender === 'customer';
+                const isAi = msg.sender === 'ai';
+                const time = new Date(msg.created_at).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+
+                if (isCustomer) {
+                  return (
+                    <div key={msg.id} className="flex flex-col items-start max-w-[75%] md:max-w-[70%]">
+                      <div className="bg-surface-container-lowest p-4 rounded-2xl rounded-tl-none shadow-sm text-stone-800 text-sm leading-relaxed whitespace-pre-wrap">
+                        {msg.content}
+                      </div>
+                      <span className="text-[10px] text-stone-400 mt-2 ml-1">{time}</span>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div key={msg.id} className="flex flex-col items-end ml-auto max-w-[75%] md:max-w-[70%]">
+                      <div className={`p-4 rounded-2xl rounded-tr-none shadow-md text-sm leading-relaxed relative whitespace-pre-wrap ${
+                        isAi 
+                          ? 'bg-primary-container text-on-primary-container' 
+                          : 'bg-stone-800 text-white'
+                      }`}>
+                        {msg.content}
+                        <div className="absolute -left-10 lg:-left-12 top-0 flex flex-col items-center">
+                           <span className="material-symbols-outlined text-stone-400 text-lg" style={{ fontVariationSettings: isAi ? "'FILL' 1" : "'FILL' 0", color: isAi ? "var(--color-primary)" : "var(--color-stone-400)" }}>
+                             {isAi ? "smart_toy" : "person"}
+                           </span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-stone-400 mt-2 mr-1">
+                        {isAi ? "IA" : "Agente"} • {time}
+                      </span>
+                    </div>
+                  );
+                }
+              })}
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="p-4 md:p-6 bg-surface-container-lowest border-t border-stone-100 flex-shrink-0">
+              <div className="flex items-end gap-2 md:gap-4 bg-surface-container-high rounded-3xl p-2 px-2 md:px-4 focus-within:ring-2 focus-within:ring-primary/20 transition-shadow">
+                <button className="p-2 text-stone-500 hover:text-primary transition-colors hidden sm:block">
+                  <span className="material-symbols-outlined">add_circle</span>
+                </button>
+                <textarea 
+                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm py-3 min-h-[44px] max-h-32 resize-none leading-relaxed text-stone-800 outline-none" 
+                  placeholder={aiActive ? "La IA está manejando este chat. Toma el control para responder." : `Escribe un mensaje para ${selected.customer_name}...`}
+                  rows={1}
+                  value={input}
+                  disabled={aiActive}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                />
+                <button className="p-2 text-stone-500 hover:text-primary transition-colors hidden sm:block">
+                  <span className="material-symbols-outlined">mood</span>
+                </button>
+                <button 
+                  onClick={handleSend}
+                  disabled={!input.trim() || aiActive}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+                    input.trim() && !aiActive 
+                      ? "bg-primary text-on-primary shadow-lg shadow-primary/20 hover:scale-105 active:scale-95" 
+                      : "bg-surface text-stone-400"
+                  } mb-1`}
+                >
+                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>send</span>
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-stone-400 gap-4">
+             <span className="material-symbols-outlined text-6xl opacity-20">forum</span>
+             <p className="font-body text-sm font-medium">Selecciona una conversación para leer y enviar mensajes</p>
+          </div>
+        )}
+      </section>
+
+      {/* 3. Order History Sidebar (Right) */}
+      <aside className="hidden lg:flex w-[320px] bg-surface flex-col border-l border-stone-200">
+        {selected ? (
+          <>
+            <div className="p-6 border-b border-stone-100 bg-surface-container-low/50">
+              <h3 className="font-headline font-bold text-stone-900 mb-4">Perfil del Cliente</h3>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-orange-100 flex items-center justify-center text-primary">
+                  <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>person</span>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-bold text-stone-800 truncate">{selected.customer_name}</p>
+                  <p className="text-xs text-stone-500 truncate">{selected.customer_phone}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-surface-container-lowest p-3 rounded-2xl shadow-sm border border-stone-100">
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Pedidos Totales</p>
+                  <p className="text-xl font-headline font-black text-primary">{customerOrders.length}</p>
+                </div>
+                <div className="bg-surface-container-lowest p-3 rounded-2xl shadow-sm border border-stone-100">
+                  <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Gasto Total</p>
+                  <p className="text-xl font-headline font-black text-primary">${customerTotalSpent.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-headline font-bold text-stone-800 text-sm">Historial de Pedidos</h4>
+              </div>
+
+              {customerOrders.length > 0 ? (
+                <div className="space-y-4">
+                  {customerOrders.map(order => (
+                    <div key={order.id} className="p-4 rounded-2xl bg-surface-container-low border border-transparent hover:border-outline-variant/20 transition-all group">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="text-xs font-bold text-stone-900">#ORD-{order.order_number}</span>
+                        <span className="text-[10px] font-medium text-stone-400">
+                           {new Date(order.created_at).toLocaleDateString("es-ES", { month: "short", day: "numeric" })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-600 mb-3 line-clamp-2">
+                        {order.notes || "Sin descripción"}
+                      </p>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-black text-stone-900">${Number(order.total).toFixed(2)}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-container-highest text-stone-500 font-bold capitalize">
+                          {order.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-stone-400 text-xs text-center py-6 border border-dashed border-stone-200 rounded-xl">
+                  Sin pedidos anteriores
+                </div>
+              )}
+            </div>
+
+            <div className="mt-auto p-6 border-t border-stone-100 bg-surface-container-lowest">
+              <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100">
+                <p className="text-xs font-bold text-orange-900 mb-2">Notas del Concierge</p>
+                <p className="text-[11px] text-orange-800 leading-relaxed italic">
+                  Las notas automatizadas y preferencias de clientes se mostrarán aquí próximamente en base a su historial.
+                </p>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-stone-300 gap-4">
+             <span className="material-symbols-outlined text-4xl opacity-20">person_off</span>
+             <p className="text-xs font-medium">No hay selección</p>
+          </div>
+        )}
+      </aside>
     </div>
   );
 }
