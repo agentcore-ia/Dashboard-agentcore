@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
             'Precio': price,
             'Ingredientes': data.ingredientes || '',
         });
-        return NextResponse.json({ success: true }, { status: 201 });
+        return NextResponse.json({ success: true, data: { Producto: data.producto.trim(), Tipo: data.tipo || 'Otro', Disponible: data.disponible || 'Sí', Precio: price, Ingredientes: data.ingredientes || '', Aliases: data.aliases || '' } }, { status: 201 });
     } catch (err: any) {
         console.error('POST /api/menu error:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });
@@ -138,7 +138,7 @@ export async function PUT(request: NextRequest) {
         try { row.set('Ingredientes', data.ingredientes || ''); } catch {}
         try { row.set('Aliases', data.aliases || ''); } catch {}
         await row.save();
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, data: { Producto: (data.producto || originalName).trim(), Tipo: data.tipo || 'Otro', Disponible: data.disponible || 'Sí', Precio: price, Ingredientes: data.ingredientes || '', Aliases: data.aliases || '' } });
     } catch (err: any) {
         console.error('PUT /api/menu error:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });
