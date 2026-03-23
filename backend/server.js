@@ -70,13 +70,13 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || '*',
+    origin: '*',
     methods: ['GET', 'POST'],
   },
 });
 
 app.set('io', io);
-app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 // ── Mount Routes (only if loaded successfully) ───────────

@@ -50,9 +50,6 @@ async function ensureDocLoad(req, res, next) {
     if (!doc) {
         return res.status(500).json({ error: "Google Sheets client failed to initialize. Check server logs." });
     }
-    if (!SERVICE_EMAIL || !PRIVATE_KEY) {
-        return res.status(500).json({ error: "Missing Google Service Account credentials in .env (GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_PRIVATE_KEY)" });
-    }
     if (!isReady) {
         try {
             await doc.loadInfo();
