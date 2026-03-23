@@ -18,11 +18,11 @@ interface Product {
 const API_URL = '/api';
 
 const CATEGORY_MAP: Record<string, { icon: string; colorClass: string }> = {
-  Pizzas: { icon: "local_pizza", colorClass: "bg-orange-100 text-orange-800" },
-  Burgers: { icon: "lunch_dining", colorClass: "bg-stone-100 text-stone-500" },
-  Bebidas: { icon: "local_bar", colorClass: "bg-lime-50 text-lime-700" },
-  Postres: { icon: "icecream", colorClass: "bg-pink-50 text-pink-700" },
-  Pasta: { icon: "dinner_dining", colorClass: "bg-stone-100 text-stone-500" },
+  Pizza: { icon: "local_pizza", colorClass: "bg-orange-100 text-orange-800" },
+  Empanada: { icon: "lunch_dining", colorClass: "bg-amber-50 text-amber-800" },
+  Bebida: { icon: "local_bar", colorClass: "bg-lime-50 text-lime-700" },
+  Postre: { icon: "icecream", colorClass: "bg-pink-50 text-pink-700" },
+  Otro: { icon: "restaurant", colorClass: "bg-stone-100 text-stone-500" },
   default: { icon: "restaurant", colorClass: "bg-green-50 text-green-700" },
 };
 
@@ -38,7 +38,7 @@ export default function MenuPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState<Partial<Product>>({
-     name: "", description: "", price: 0, category: "Pizzas", available: true, aliases: ""
+     name: "", description: "", price: 0, category: "Pizza", available: true, aliases: ""
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -91,7 +91,7 @@ export default function MenuPage() {
 
   const openNewModal = () => {
     setEditingProduct(null);
-    setFormData({ name: "", description: "", price: 0, category: "Pizzas", available: true, aliases: "" });
+    setFormData({ name: "", description: "", price: 0, category: "Pizza", available: true, aliases: "" });
     setIsModalOpen(true);
   };
 
@@ -194,7 +194,7 @@ export default function MenuPage() {
     closeModal();
   };
 
-  const categories = ["Todo", "Pizzas", "Burgers", "Bebidas", "Postres", "Pasta"];
+  const categories = ["Todo", "Pizza", "Empanada", "Bebida", "Postre", "Otro"];
 
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || (p.description?.toLowerCase().includes(search.toLowerCase()));
