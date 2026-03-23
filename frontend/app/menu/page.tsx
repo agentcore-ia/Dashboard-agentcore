@@ -19,7 +19,7 @@ const API_URL = '/api';
 
 const CATEGORY_MAP: Record<string, { icon: string; colorClass: string }> = {
   Pizza: { icon: "local_pizza", colorClass: "bg-orange-100 text-orange-800" },
-  Empanada: { icon: "lunch_dining", colorClass: "bg-amber-50 text-amber-800" },
+  Empanada: { icon: "bakery_dining", colorClass: "bg-amber-50 text-amber-800" },
   Bebida: { icon: "local_bar", colorClass: "bg-lime-50 text-lime-700" },
   Postre: { icon: "icecream", colorClass: "bg-pink-50 text-pink-700" },
   Otro: { icon: "restaurant", colorClass: "bg-stone-100 text-stone-500" },
@@ -289,11 +289,12 @@ export default function MenuPage() {
                     <span className="material-symbols-outlined">{catInfo.icon}</span>
                   </div>
                   <div className="min-w-0 flex-1 pr-4">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-on-surface truncate font-headline">{product.name}</h3>
-                      <span className={`text-sm font-black ${product.available ? 'text-primary' : 'text-stone-400'}`}>${Number(product.price).toFixed(2)}</span>
+                    <div className="flex flex-col">
+                      <h3 className="font-bold text-on-surface truncate font-headline text-lg">{product.name || "Sin nombre"}</h3>
+                      <span className={`text-md font-black ${product.available ? 'text-primary' : 'text-stone-400'}`}>
+                         ${Number(product.price).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </span>
                     </div>
-                    <p className="text-xs text-stone-500 truncate mt-0.5">{product.description || "Sin descripción"}</p>
                   </div>
                 </div>
 
