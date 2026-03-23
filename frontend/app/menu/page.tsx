@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 
 interface Product {
   id: string;
-  restaurant_id: string;
+  restaurant_id?: string;
   name: string;
   description: string;
   price: number;
@@ -151,7 +151,7 @@ export default function MenuPage() {
          id: editingProduct ? editingProduct.id : `gsheet-new-${Date.now()}`,
          name: savedData.Producto || formData.name || "",
          category: savedData.Tipo || formData.category || "Otro",
-         available: (savedData.Disponible === 'Sí' || formData.available),
+         available: (savedData.Disponible === 'Sí' || (formData.available ?? false)),
          price: Number(formData.price),
          description: savedData.Ingredientes || formData.description || "",
          aliases: savedData.Aliases || formData.aliases || ""
