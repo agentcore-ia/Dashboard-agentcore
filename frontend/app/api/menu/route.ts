@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
             data.aliases || ''
         ]];
 
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1!A:F:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent("'Hoja 1'!A:F")}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
         const res = await fetch(url, {
             method: 'POST',
             headers,
@@ -187,7 +187,7 @@ export async function PUT(request: NextRequest) {
             data.aliases || ''
         ]];
 
-        const range = `Sheet1!A${sheetRow}:F${sheetRow}`;
+        const range = encodeURIComponent(`'Hoja 1'!A${sheetRow}:F${sheetRow}`);
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`;
         const res = await fetch(url, {
             method: 'PUT',
@@ -229,7 +229,7 @@ export async function PATCH(request: NextRequest) {
         if (rowIndex === -1) return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
 
         const sheetRow = rowIndex + 2;
-        const range = `Sheet1!C${sheetRow}`; // Column C = Disponible
+        const range = encodeURIComponent(`'Hoja 1'!C${sheetRow}`); // Column C = Disponible
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`;
         const res = await fetch(url, {
             method: 'PUT',
@@ -271,7 +271,7 @@ export async function DELETE(request: NextRequest) {
 
         const sheetRow = rowIndex + 2;
         // Clear the row (Google Sheets API v4 doesn't have a direct delete-row via values endpoint)
-        const range = `Sheet1!A${sheetRow}:F${sheetRow}`;
+        const range = encodeURIComponent(`'Hoja 1'!A${sheetRow}:F${sheetRow}`);
         const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}?valueInputOption=USER_ENTERED`;
         const res = await fetch(url, {
             method: 'PUT',
