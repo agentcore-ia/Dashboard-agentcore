@@ -60,6 +60,7 @@ export default function ConversasPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
   const [customerTotalSpent, setCustomerTotalSpent] = useState(0);
+  const [showProfile, setShowProfile] = useState(false);
   
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
@@ -401,6 +402,13 @@ export default function ConversasPage() {
                 >
                   {aiActive ? "Tomar Control" : "Reactivar IA"}
                 </button>
+                <button 
+                  onClick={() => setShowProfile(!showProfile)}
+                  className={`p-2 rounded-full transition-colors flex items-center justify-center ${showProfile ? 'bg-primary/20 text-primary' : 'hover:bg-surface-container-high text-stone-500'}`}
+                  title="Ver perfil del cliente"
+                >
+                  <span className="material-symbols-outlined">info</span>
+                </button>
                 <button className="p-2 hover:bg-surface-container-high rounded-full transition-colors text-stone-500">
                   <span className="material-symbols-outlined">more_vert</span>
                 </button>
@@ -499,7 +507,8 @@ export default function ConversasPage() {
       </section>
 
       {/* 3. Order History Sidebar (Right) */}
-      <aside className="hidden lg:flex w-[320px] bg-surface flex-col border-l border-stone-200">
+      {showProfile && (
+      <aside className="hidden lg:flex w-[320px] bg-surface flex-col border-l border-stone-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 transition-all">
         {selected ? (
           <>
             <div className="p-6 border-b border-stone-100 bg-surface-container-low/50">
@@ -576,6 +585,7 @@ export default function ConversasPage() {
           </div>
         )}
       </aside>
+      )}
     </div>
   );
 }
