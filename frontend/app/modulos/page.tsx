@@ -1,6 +1,98 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+
+// ─── QR Code Modal ─────────────────────────────────────────────────────────────
+function QRModal({ onClose }: { onClose: () => void }) {
+  const [qrData, setQrData] = useState<{ base64?: string; pairingCode?: string; instance?: { state?: string } } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [connected, setConnected] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchQR = useCallback(async () => {
+    try {
+      const res = await fetch('/api/evolution/qr');
+      const data = await res.json();
+      if (data.instance?.state === 'open') {
+        setConnected(true);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      } else {
+        setQrData(data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchQR();
+    intervalRef.current = setInterval(fetchQR, 30000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [fetchQR]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-sm w-full mx-4 relative"
+        onClick={e => e.stopPropagation()}
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200 transition-colors">
+          <span className="material-symbols-outlined text-sm">close</span>
+        </button>
+
+        {connected ? (
+          <div className="text-center py-8">
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+              <span className="material-symbols-outlined text-green-600 text-3xl fill-icon">check_circle</span>
+            </div>
+            <h3 className="font-headline text-xl font-bold text-on-surface mb-2">¡Conectado!</h3>
+            <p className="text-stone-500 text-sm">WhatsApp vinculado correctamente.</p>
+            <button onClick={onClose} className="mt-6 bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm hover:shadow-lg transition-all">
+              Cerrar
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="text-center mb-6">
+              <h3 className="font-headline text-xl font-bold text-on-surface mb-1">Conectar WhatsApp</h3>
+              <p className="text-stone-500 text-sm">Escaneá el código QR con tu WhatsApp</p>
+            </div>
+
+            {loading ? (
+              <div className="w-64 h-64 mx-auto flex items-center justify-center bg-stone-50 rounded-2xl">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            ) : qrData?.base64 ? (
+              <div className="flex flex-col items-center gap-4">
+                <div className="p-3 bg-white rounded-2xl shadow-inner border border-stone-100">
+                  <img src={qrData.base64} alt="QR WhatsApp" className="w-56 h-56 rounded-xl" />
+                </div>
+                {qrData.pairingCode && (
+                  <div className="w-full bg-stone-50 rounded-xl p-3 text-center">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Código de vinculación</p>
+                    <p className="font-mono font-black text-xl text-primary tracking-widest">{qrData.pairingCode}</p>
+                  </div>
+                )}
+                <p className="text-[11px] text-stone-400 text-center">El código se renueva automáticamente cada 30 segundos</p>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-stone-400">
+                <span className="material-symbols-outlined text-4xl mb-2 block">signal_wifi_connected_no_internet_4</span>
+                <p className="text-sm">No se pudo obtener el QR.<br />Verificá que la instancia esté activa.</p>
+                <button onClick={fetchQR} className="mt-4 text-primary font-bold text-sm">Reintentar</button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ──────────────────────────────────────────────────────────────────
+type ConnectionStatus = 'loading' | 'open' | 'close' | 'error';
 
 const ModulosPage = () => {
   const [activeModules, setActiveModules] = useState({
@@ -11,6 +103,25 @@ const ModulosPage = () => {
     google: false,
     delivery: true
   });
+  const [waStatus, setWaStatus] = useState<ConnectionStatus>('loading');
+  const [showQR, setShowQR] = useState(false);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/evolution/status');
+      const data = await res.json();
+      const state = data.instance?.state;
+      setWaStatus(state === 'open' ? 'open' : 'close');
+    } catch {
+      setWaStatus('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    checkStatus();
+    const interval = setInterval(checkStatus, 15000);
+    return () => clearInterval(interval);
+  }, [checkStatus]);
 
   const toggleModule = (module: string) => {
     setActiveModules(prev => ({
@@ -20,35 +131,36 @@ const ModulosPage = () => {
     }));
   };
 
+  const statusConfig: Record<ConnectionStatus, { label: string; dot: string; text: string }> = {
+    loading: { label: 'Verificando...', dot: 'bg-stone-300 animate-pulse', text: 'text-stone-400' },
+    open:    { label: 'Conectado',      dot: 'bg-green-500',               text: 'text-green-600' },
+    close:   { label: 'Desconectado',   dot: 'bg-red-500 animate-pulse',   text: 'text-red-600'   },
+    error:   { label: 'Sin respuesta',  dot: 'bg-amber-400 animate-pulse', text: 'text-amber-600' },
+  };
+  const sc = statusConfig[waStatus];
+
   return (
     <div className="max-w-7xl mx-auto">
-      {/* Header Section */}
+      {showQR && <QRModal onClose={() => { setShowQR(false); checkStatus(); }} />}
+
+      {/* Header */}
       <div className="mb-12">
-        <h2 className="font-headline text-4xl font-bold tracking-tight text-on-surface mb-2">
-          Gestión de Módulos
-        </h2>
-        <p className="font-body text-xl text-stone-500">
-          Activa o desactiva las herramientas adicionales para tu negocio.
-        </p>
+        <h2 className="font-headline text-4xl font-bold tracking-tight text-on-surface mb-2">Gestión de Módulos</h2>
+        <p className="font-body text-xl text-stone-500">Activa o desactiva las herramientas adicionales para tu negocio.</p>
       </div>
 
-      {/* Bento-style Grid */}
+      {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        
-        {/* Card 1: WhatsApp (Active) */}
+
+        {/* Card 1: WhatsApp — live status + QR reconnect */}
         <div className={`group relative p-8 rounded-lg transition-all hover:shadow-xl hover:-translate-y-1 ${
-          activeModules.whatsapp 
-            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10" 
+          activeModules.whatsapp
+            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10"
             : "bg-surface-container-low opacity-80 hover:opacity-100 hover:bg-surface-container-lowest"
         }`}>
           <div className="absolute top-6 right-6">
             <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={activeModules.whatsapp} 
-                className="sr-only peer"
-                onChange={() => toggleModule('whatsapp')}
-              />
+              <input type="checkbox" checked={activeModules.whatsapp} className="sr-only peer" onChange={() => toggleModule('whatsapp')} />
               <div className="w-12 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
@@ -60,33 +172,51 @@ const ModulosPage = () => {
             </div>
             <h3 className="text-xl font-bold text-on-surface mb-3 font-headline">Agente WhatsApp</h3>
             <p className="text-body text-stone-500 leading-relaxed">Automatiza tus conversaciones y pedidos por WhatsApp con inteligencia artificial.</p>
+
+            {/* Live connection status pill */}
+            {activeModules.whatsapp && (
+              <div className="mt-4 flex items-center gap-2 bg-stone-50 rounded-xl px-3 py-2">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${sc.dot}`}></span>
+                <span className={`text-xs font-bold ${sc.text}`}>{sc.label}</span>
+                <span className="ml-auto text-[10px] text-stone-400 font-mono">agentcore test</span>
+              </div>
+            )}
           </div>
-          <div className="mt-8 flex items-center justify-between">
+
+          <div className="mt-6 flex items-center justify-between">
             <span className={`text-xs font-bold tracking-wider uppercase ${activeModules.whatsapp ? "text-primary" : "text-stone-400"}`}>
               {activeModules.whatsapp ? "Activo" : "Inactivo"}
             </span>
             {activeModules.whatsapp && (
-              <button className="text-primary font-bold text-sm flex items-center gap-1 group-hover:gap-2 transition-all">
-                Configurar <span className="material-symbols-outlined text-sm">chevron_right</span>
-              </button>
+              waStatus !== 'open' && waStatus !== 'loading' ? (
+                <button
+                  onClick={() => setShowQR(true)}
+                  className="bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-sm">qr_code_scanner</span>
+                  Reconectar
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowQR(true)}
+                  className="text-primary font-bold text-sm flex items-center gap-1 group-hover:gap-2 transition-all"
+                >
+                  Configurar <span className="material-symbols-outlined text-sm">chevron_right</span>
+                </button>
+              )
             )}
           </div>
         </div>
 
-        {/* Card 2: Instagram (Inactive) */}
+        {/* Card 2: Instagram */}
         <div className={`group relative p-8 rounded-lg transition-all hover:shadow-xl hover:-translate-y-1 ${
-          activeModules.instagram 
-            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10" 
+          activeModules.instagram
+            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10"
             : "bg-surface-container-low opacity-80 hover:opacity-100 hover:bg-surface-container-lowest"
         }`}>
           <div className="absolute top-6 right-6">
             <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={activeModules.instagram} 
-                className="sr-only peer"
-                onChange={() => toggleModule('instagram')}
-              />
+              <input type="checkbox" checked={activeModules.instagram} className="sr-only peer" onChange={() => toggleModule('instagram')} />
               <div className="w-12 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
@@ -106,20 +236,15 @@ const ModulosPage = () => {
           </div>
         </div>
 
-        {/* Card 3: Reservas (Inactive) */}
+        {/* Card 3: Reservas */}
         <div className={`group relative p-8 rounded-lg transition-all hover:shadow-xl hover:-translate-y-1 ${
-          activeModules.reservas 
-            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10" 
+          activeModules.reservas
+            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10"
             : "bg-surface-container-low opacity-80 hover:opacity-100 hover:bg-surface-container-lowest"
         }`}>
           <div className="absolute top-6 right-6">
             <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={activeModules.reservas} 
-                className="sr-only peer"
-                onChange={() => toggleModule('reservas')}
-              />
+              <input type="checkbox" checked={activeModules.reservas} className="sr-only peer" onChange={() => toggleModule('reservas')} />
               <div className="w-12 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
@@ -137,20 +262,15 @@ const ModulosPage = () => {
           </div>
         </div>
 
-        {/* Card 4: Agente Telefónico (Inactive) */}
+        {/* Card 4: Agente Telefónico */}
         <div className={`group relative p-8 rounded-lg transition-all hover:shadow-xl hover:-translate-y-1 ${
-          activeModules.phone 
-            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10" 
+          activeModules.phone
+            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10"
             : "bg-surface-container-low opacity-80 hover:opacity-100 hover:bg-surface-container-lowest"
         }`}>
           <div className="absolute top-6 right-6">
             <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={activeModules.phone} 
-                className="sr-only peer"
-                onChange={() => toggleModule('phone')}
-              />
+              <input type="checkbox" checked={activeModules.phone} className="sr-only peer" onChange={() => toggleModule('phone')} />
               <div className="w-12 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
@@ -168,20 +288,15 @@ const ModulosPage = () => {
           </div>
         </div>
 
-        {/* Card 5: Google Business (Inactive) */}
+        {/* Card 5: Google Business */}
         <div className={`group relative p-8 rounded-lg transition-all hover:shadow-xl hover:-translate-y-1 ${
-          activeModules.google 
-            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10" 
+          activeModules.google
+            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10"
             : "bg-surface-container-low opacity-80 hover:opacity-100 hover:bg-surface-container-lowest"
         }`}>
           <div className="absolute top-6 right-6">
             <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={activeModules.google} 
-                className="sr-only peer"
-                onChange={() => toggleModule('google')}
-              />
+              <input type="checkbox" checked={activeModules.google} className="sr-only peer" onChange={() => toggleModule('google')} />
               <div className="w-12 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
@@ -199,20 +314,15 @@ const ModulosPage = () => {
           </div>
         </div>
 
-        {/* Card 6: Delivery Integrations (Active) */}
+        {/* Card 6: Delivery Integrations */}
         <div className={`group relative p-8 rounded-lg transition-all hover:shadow-xl hover:-translate-y-1 ${
-          activeModules.delivery 
-            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10" 
+          activeModules.delivery
+            ? "bg-surface-container-lowest shadow-[0_4px_40px_0_rgba(173,44,0,0.04)] ring-2 ring-primary/10"
             : "bg-surface-container-low opacity-80 hover:opacity-100 hover:bg-surface-container-lowest"
         }`}>
           <div className="absolute top-6 right-6">
             <label className="relative inline-flex items-center cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={activeModules.delivery} 
-                className="sr-only peer"
-                onChange={() => toggleModule('delivery')}
-              />
+              <input type="checkbox" checked={activeModules.delivery} className="sr-only peer" onChange={() => toggleModule('delivery')} />
               <div className="w-12 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
@@ -236,22 +346,17 @@ const ModulosPage = () => {
         </div>
       </div>
 
-      {/* Suggestion / Promotional Section */}
+      {/* Promotional Section */}
       <div className="mt-16 bg-primary-container/10 p-10 rounded-[2rem] flex flex-col lg:flex-row items-center gap-10 overflow-hidden relative">
         <div className="flex-1 z-10">
           <span className="bg-primary text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-tighter mb-4 inline-block">Proximamente</span>
-          <h2 className="text-headline text-3xl font-bold text-primary mb-4 font-headline">Inteligencia de Inventario</h2>
+          <h2 className="text-3xl font-bold text-primary mb-4 font-headline">Inteligencia de Inventario</h2>
           <p className="text-body text-on-secondary-container max-w-lg mb-8">Estamos cocinando una nueva herramienta para predecir tus necesidades de stock basadas en la demanda histórica de tus pedidos de WhatsApp.</p>
           <button className="bg-primary text-white px-8 py-3 rounded-xl font-bold hover:shadow-lg transition-all active:scale-95">Me interesa</button>
         </div>
         <div className="w-full lg:w-1/3 aspect-video lg:aspect-square rounded-2xl overflow-hidden shadow-2xl z-10">
-          <img 
-            alt="Kitchen stock and fresh ingredients" 
-            className="w-full h-full object-cover" 
-            src="https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=2070&auto=format&fit=crop"
-          />
+          <img alt="Kitchen stock and fresh ingredients" className="w-full h-full object-cover" src="https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=2070&auto=format&fit=crop" />
         </div>
-        {/* Abstract Decorative Element */}
         <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-primary/5 rounded-full blur-3xl"></div>
       </div>
     </div>
