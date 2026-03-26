@@ -96,6 +96,13 @@ function OrderCard({ order, onAdvance }: { order: Order; onAdvance: (id: string,
         )}
       </div>
 
+      {!pickup && order.address && (
+        <div className="text-xs text-stone-500 bg-stone-100 p-2 rounded-lg border border-stone-200 flex items-start gap-1.5">
+          <span className="material-symbols-outlined text-[14px]">location_on</span>
+          <span className="font-medium">{order.address}</span>
+        </div>
+      )}
+
       <div className="space-y-2">
         <ul className="text-sm font-medium text-stone-600 list-none space-y-1">
           {order.items.length > 0 ? (
@@ -144,7 +151,7 @@ export default function PedidosPage() {
     const { data, error } = await supabase
       .from('pedidos')
       .select(`
-        id, order_number, status, delivery_type, payment_method, address, subtotal, delivery_fee, total, notes, created_at,
+        id, order_number, status, delivery_type, payment_method, address, subtotal, delivery_fee, total, notes, created_at, customer_name, customer_phone,
         clientes(name, phone)
       `)
       .order('created_at', { ascending: false })
@@ -158,7 +165,8 @@ export default function PedidosPage() {
 
     const transformed: Order[] = (data || []).map((o: any) => ({
       id: o.id, order_number: o.order_number, status: o.status,
-      customer_name: o.clientes?.name || "Cliente", customer_phone: o.clientes?.phone || "",
+      customer_name: o.customer_name || o.clientes?.name || "Cliente", 
+      customer_phone: o.customer_phone || o.clientes?.phone || "",
       delivery_type: o.delivery_type, payment_method: o.payment_method, address: o.address || "",
       subtotal: Number(o.subtotal), delivery_fee: Number(o.delivery_fee), total: Number(o.total),
       items: o.notes ? [{ name: o.notes, price: 0, quantity: 1 }] : [],
