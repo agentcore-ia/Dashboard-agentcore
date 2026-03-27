@@ -2,60 +2,60 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-const EVOLUTION_MANAGER_URL = 'https://agentcore-evolution-api.8zp1cp.easypanel.host/manager';
+// ─── Evolution API Direct (same as Evolution Manager — bypasses Next.js proxy) ──
+// CORS_ORIGIN=* on the Evolution API allows direct browser calls
+const EVO_URL    = 'https://agentcore-evolution-api.8zp1cp.easypanel.host';
+const EVO_TOKEN  = '465E65D048F8-42B4-B162-4CF3107E70D8'; // instance token
+const EVO_INST   = 'agentcore test';
 
 // ─── QR Code Modal ─────────────────────────────────────────────────────────────
 function QRModal({ onClose }: { onClose: () => void }) {
   const [qrBase64, setQrBase64] = useState<string | null>(null);
-  const [qrCount, setQrCount] = useState<number>(-1);
-  const [loading, setLoading]  = useState(true);
+  const [qrCount, setQrCount]   = useState<number>(-1);
+  const [loading, setLoading]   = useState(true);
   const [connected, setConnected] = useState(false);
-  const qrIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrIntervalRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch latest QR. Safe to call repeatedly — confirmed same QR returned within a rotation window.
+  // Direct fetch — identical to what Evolution Manager does
   const fetchQR = useCallback(async (showSpinner = false) => {
     if (showSpinner) setLoading(true);
     try {
-      const res  = await fetch('/api/evolution/qr', { cache: 'no-store' });
+      const res  = await fetch(
+        `${EVO_URL}/instance/connect/${encodeURIComponent(EVO_INST)}`,
+        { headers: { apikey: EVO_TOKEN }, cache: 'no-store' }
+      );
       const data = await res.json();
-      if (data.instance?.state === 'open') {
-        setConnected(true);
-        return;
-      }
+      if (data.instance?.state === 'open') { setConnected(true); return; }
       if (data.base64) {
         setQrBase64(data.base64);
         setQrCount(prev => {
-          // Only show brief loading flash when QR actually rotated (count changed)
           if (prev !== -1 && prev !== data.count) setLoading(true);
-          return data.count;
+          return data.count ?? prev;
         });
       }
-    } catch { /* network error - keep showing last QR */ }
-    finally { setLoading(false); }
+    } catch { /* keep last QR on network error */ }
+    finally   { setLoading(false); }
+  }, []);
+
+  // Status check (still via proxy to keep global key server-side)
+  const checkStatus = useCallback(async () => {
+    try {
+      const sr = await fetch('/api/evolution/status');
+      const sd = await sr.json();
+      if (sd.instance?.state === 'open') setConnected(true);
+    } catch {}
   }, []);
 
   useEffect(() => {
-    fetchQR(true); // first load: show spinner
-
-    // Poll QR every 7s. Tests show multiple rapid calls return the same QR within a window.
-    // This ensures we always show the LATEST rotation instead of an expired code.
-    qrIntervalRef.current = setInterval(() => fetchQR(false), 7000);
-
-    // Poll connection status every 3s — auto-close the modal when WhatsApp links
-    statusIntervalRef.current = setInterval(async () => {
-      try {
-        const sr = await fetch('/api/evolution/status');
-        const sd = await sr.json();
-        if (sd.instance?.state === 'open') setConnected(true);
-      } catch {}
-    }, 3000);
-
+    fetchQR(true);
+    qrIntervalRef.current     = setInterval(() => fetchQR(false), 7000);
+    statusIntervalRef.current = setInterval(checkStatus, 3000);
     return () => {
-      if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
+      if (qrIntervalRef.current)     clearInterval(qrIntervalRef.current);
       if (statusIntervalRef.current) clearInterval(statusIntervalRef.current);
     };
-  }, [fetchQR]);
+  }, [fetchQR, checkStatus]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
