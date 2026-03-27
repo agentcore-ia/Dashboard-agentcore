@@ -51,16 +51,26 @@ function QRModal({ onClose }: { onClose: () => void }) {
     setPairingLoading(true);
     setPairingCode(null);
     try {
+      const num = phoneNumber.replace(/\D/g, '');
       const res = await fetch('/api/evolution/pairing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: phoneNumber.replace(/\D/g, '') })
+        body: JSON.stringify({ number: num })
       });
       const data = await res.json();
-      if (data.code || data.pairingCode) setPairingCode(data.code || data.pairingCode);
-      else throw new Error('No code');
+      
+      // Evolution returns pairing code either in 'code' or 'pairingCode' property
+      const code = data.code || data.pairingCode || data.pairing_code;
+      
+      // Safety check: pairing codes are usually 8-10 chars. 
+      // If code is long (raw QR), the API ignored the 'number' parameter or failed.
+      if (code && code.length < 20) {
+        setPairingCode(code);
+      } else {
+        throw new Error('API returned QR instead of Pairing Code. Check number format.');
+      }
     } catch {
-      alert('Error al generar código de vinculación. Verificá el formato del número.');
+      alert('Error: La API devolvió un QR en lugar del código. Asegurate que el número esté bien (ej: 54911...).');
     } finally {
       setPairingLoading(false);
     }
@@ -200,9 +210,9 @@ function QRModal({ onClose }: { onClose: () => void }) {
                 ) : (
                   <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-100 flex flex-col items-center">
                     <p className="text-xs text-stone-400 font-bold mb-4 uppercase tracking-widest text-center">Ingresá este código en WhatsApp</p>
-                    <div className="grid grid-cols-4 gap-2 mb-6">
-                      {pairingCode.split('').map((char, i) => (
-                        <div key={i} className="w-10 h-12 bg-white rounded-lg shadow-sm border border-stone-100 flex items-center justify-center text-xl font-black text-primary">
+                    <div className="flex flex-wrap items-center justify-center gap-2 mb-6 max-w-xs">
+                      {pairingCode.replace(/-/g, '').split('').map((char, i) => (
+                        <div key={i} className="w-9 h-11 bg-white rounded-lg shadow-sm border border-stone-100 flex items-center justify-center text-lg font-black text-primary">
                           {char}
                         </div>
                       ))}

@@ -10,16 +10,18 @@ export async function POST(req: Request) {
     const { number } = await req.json();
     if (!number) return NextResponse.json({ error: 'number required' }, { status: 400 });
 
+    const url = `${EVOLUTION_API_URL}/instance/connect/${encodeURIComponent(INSTANCE_NAME)}?number=${encodeURIComponent(number)}`;
+    console.log('Fetching Pairing Code from:', url);
+
     // Request pairing code from Evolution API
-    const res = await fetch(
-      `${EVOLUTION_API_URL}/instance/connect/${encodeURIComponent(INSTANCE_NAME)}?number=${encodeURIComponent(number)}`,
-      {
+    const res = await fetch(url, {
         method: 'GET',
         headers: { apikey: INSTANCE_TOKEN },
         cache: 'no-store',
       }
     );
     const data = await res.json();
+    console.log('Evolution API Response:', data);
     return NextResponse.json(data);
   } catch (e) {
     return NextResponse.json({ error: 'Failed to get pairing code' }, { status: 500 });
