@@ -6,73 +6,56 @@ const EVOLUTION_MANAGER_URL = 'https://agentcore-evolution-api.8zp1cp.easypanel.
 
 // ─── QR Code Modal ─────────────────────────────────────────────────────────────
 function QRModal({ onClose }: { onClose: () => void }) {
-  const [qrData, setQrData] = useState<{ base64?: string; pairingCode?: string; instance?: { state?: string } } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [qrBase64, setQrBase64] = useState<string | null>(null);
+  const [qrCount, setQrCount] = useState<number>(-1);
+  const [loading, setLoading]  = useState(true);
   const [connected, setConnected] = useState(false);
-  const [countdown, setCountdown] = useState(25);
-  const [expired, setExpired] = useState(false);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const statusRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchQR = useCallback(async () => {
-    setLoading(true);
-    setExpired(false);
-    setQrData(null);
-    setCountdown(25);
-    if (countdownRef.current) clearInterval(countdownRef.current);
-
+  // Fetch latest QR. Safe to call repeatedly — confirmed same QR returned within a rotation window.
+  const fetchQR = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setLoading(true);
     try {
-      // /reconnect = logout first then connect = guaranteed fresh QR (count:1)
-      const res = await fetch('/api/evolution/reconnect', { method: 'POST' });
+      const res  = await fetch('/api/evolution/qr', { cache: 'no-store' });
       const data = await res.json();
       if (data.instance?.state === 'open') {
         setConnected(true);
-      } else if (data.base64) {
-        setQrData(data);
-        let t = 25;
-        setCountdown(t);
-        countdownRef.current = setInterval(() => {
-          t--;
-          setCountdown(t);
-          if (t <= 0) {
-            clearInterval(countdownRef.current!);
-            setExpired(true);
-          }
-        }, 1000);
-        // Poll connection status every 3s — auto-close when WhatsApp connects
-        statusRef.current = setInterval(async () => {
-          try {
-            const sr = await fetch('/api/evolution/status');
-            const sd = await sr.json();
-            if (sd.instance?.state === 'open') {
-              clearInterval(statusRef.current!);
-              clearInterval(countdownRef.current!);
-              setConnected(true);
-            }
-          } catch {}
-        }, 3000);
-      } else {
-        setQrData(null);
+        return;
       }
-    } catch {
-      setQrData(null);
-    } finally {
-      setLoading(false);
-    }
+      if (data.base64) {
+        setQrBase64(data.base64);
+        setQrCount(prev => {
+          // Only show brief loading flash when QR actually rotated (count changed)
+          if (prev !== -1 && prev !== data.count) setLoading(true);
+          return data.count;
+        });
+      }
+    } catch { /* network error - keep showing last QR */ }
+    finally { setLoading(false); }
   }, []);
 
-  // Fetch ONCE on mount. Auto-polling is REMOVED — each call to /instance/connect
-  // generates a brand-new QR and invalidates the previous one, making scanning fail.
   useEffect(() => {
-    fetchQR();
-    return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      if (statusRef.current) clearInterval(statusRef.current);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    fetchQR(true); // first load: show spinner
 
-  const urgency = countdown <= 5 ? 'text-red-500' : countdown <= 10 ? 'text-amber-500' : 'text-green-600';
-  const barColor = countdown <= 5 ? 'bg-red-500' : countdown <= 10 ? 'bg-amber-500' : 'bg-green-500';
+    // Poll QR every 7s. Tests show multiple rapid calls return the same QR within a window.
+    // This ensures we always show the LATEST rotation instead of an expired code.
+    qrIntervalRef.current = setInterval(() => fetchQR(false), 7000);
+
+    // Poll connection status every 3s — auto-close the modal when WhatsApp links
+    statusIntervalRef.current = setInterval(async () => {
+      try {
+        const sr = await fetch('/api/evolution/status');
+        const sd = await sr.json();
+        if (sd.instance?.state === 'open') setConnected(true);
+      } catch {}
+    }, 3000);
+
+    return () => {
+      if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
+      if (statusIntervalRef.current) clearInterval(statusIntervalRef.current);
+    };
+  }, [fetchQR]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -86,8 +69,8 @@ function QRModal({ onClose }: { onClose: () => void }) {
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-green-600 text-3xl fill-icon">check_circle</span>
             </div>
-            <h3 className="font-headline text-xl font-bold text-on-surface mb-2">¡Ya estás conectado!</h3>
-            <p className="text-stone-500 text-sm">WhatsApp está vinculado y funcionando.</p>
+            <h3 className="font-headline text-xl font-bold text-on-surface mb-2">¡Conectado!</h3>
+            <p className="text-stone-500 text-sm">WhatsApp vinculado correctamente.</p>
             <button onClick={onClose} className="mt-6 bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm hover:shadow-lg transition-all">Cerrar</button>
           </div>
         ) : (
@@ -95,53 +78,43 @@ function QRModal({ onClose }: { onClose: () => void }) {
             <div className="text-center mb-5">
               <h3 className="font-headline text-xl font-bold text-on-surface mb-1">Reconectar WhatsApp</h3>
               <p className="text-stone-500 text-xs">
-                Abrí WhatsApp → Menú (⋮) → <strong>Dispositivos vinculados</strong> → Vincular dispositivo
+                Abrí WhatsApp → Menú (<strong>⋮</strong>) → <strong>Dispositivos vinculados</strong> → Vincular dispositivo
               </p>
             </div>
 
-            {loading ? (
-              <div className="w-64 h-64 mx-auto flex items-center justify-center bg-stone-50 rounded-2xl">
+            {loading && !qrBase64 ? (
+              /* First load spinner */
+              <div className="w-60 h-60 mx-auto flex flex-col items-center justify-center bg-stone-50 rounded-2xl gap-3">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-xs text-stone-400">Obteniendo código QR...</p>
               </div>
-            ) : expired ? (
-              <div className="text-center py-6">
-                <div className="w-16 h-16 rounded-full bg-stone-100 flex items-center justify-center mx-auto mb-4">
-                  <span className="material-symbols-outlined text-stone-400 text-3xl">timer_off</span>
-                </div>
-                <p className="text-stone-500 text-sm mb-4">El código QR expiró.</p>
-                <button
-                  onClick={fetchQR}
-                  className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 mx-auto hover:shadow-lg transition-all active:scale-95"
-                >
-                  <span className="material-symbols-outlined text-sm">refresh</span>
-                  Generar nuevo QR
-                </button>
-              </div>
-            ) : qrData?.base64 ? (
+            ) : qrBase64 ? (
               <div className="flex flex-col items-center gap-3">
+                {/* QR image — refreshes every 7s to always show the current valid one */}
                 <div className="relative">
-                  <div className="p-3 bg-white rounded-2xl shadow-inner border border-stone-100">
-                    <img src={qrData.base64} alt="QR WhatsApp" className="w-56 h-56 rounded-xl" />
+                  <div className={`p-3 bg-white rounded-2xl shadow-inner border border-stone-100 transition-opacity duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+                    <img src={qrBase64} alt="QR WhatsApp" className="w-56 h-56 rounded-xl" />
                   </div>
-                  <div className={`absolute -top-2 -right-2 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center font-black text-sm ${urgency} border-2 border-stone-100`}>
-                    {countdown}s
+                  {loading && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  )}
+                  {/* QR rotation counter badge */}
+                  <div className="absolute -top-2 -right-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-2 py-0.5 text-[10px] font-black">
+                    #{qrCount}
                   </div>
                 </div>
-                <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
-                    style={{ width: `${(countdown / 25) * 100}%` }}
-                  />
+
+                <div className="w-full bg-stone-50 rounded-xl px-3 py-2 text-center">
+                  <p className="text-[10px] text-stone-400 font-semibold">El QR se actualiza automáticamente · Escaneá el código actual</p>
                 </div>
-                <p className={`text-xs font-bold text-center ${urgency}`}>
-                  {countdown <= 5 ? '⚠️ ¡Escaneá ahora!' : `Válido por ${countdown}s`}
-                </p>
               </div>
             ) : (
               <div className="text-center py-8 text-stone-400">
                 <span className="material-symbols-outlined text-4xl mb-2 block">error_outline</span>
-                <p className="text-sm mb-4">No se pudo obtener el QR.</p>
-                <button onClick={fetchQR} className="bg-primary text-white px-5 py-2 rounded-xl font-bold text-sm hover:shadow transition-all">Reintentar</button>
+                <p className="text-sm mb-4">No se pudo obtener el QR.<br/>Verificá que la instancia esté activa.</p>
+                <button onClick={() => fetchQR(true)} className="bg-primary text-white px-5 py-2 rounded-xl font-bold text-sm hover:shadow transition-all">Reintentar</button>
               </div>
             )}
           </>
@@ -150,6 +123,7 @@ function QRModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
 
 // ─── Main Page ──────────────────────────────────────────────────────────────────
 type ConnectionStatus = 'loading' | 'open' | 'close' | 'error';
