@@ -12,6 +12,7 @@ function QRModal({ onClose }: { onClose: () => void }) {
   const [countdown, setCountdown] = useState(25);
   const [expired, setExpired] = useState(false);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchQR = useCallback(async () => {
     setLoading(true);
@@ -29,6 +30,7 @@ function QRModal({ onClose }: { onClose: () => void }) {
       } else if (data.base64) {
         setQrData(data);
         let t = 25;
+        setCountdown(t);
         countdownRef.current = setInterval(() => {
           t--;
           setCountdown(t);
@@ -37,6 +39,18 @@ function QRModal({ onClose }: { onClose: () => void }) {
             setExpired(true);
           }
         }, 1000);
+        // Poll connection status every 3s — auto-close when WhatsApp connects
+        statusRef.current = setInterval(async () => {
+          try {
+            const sr = await fetch('/api/evolution/status');
+            const sd = await sr.json();
+            if (sd.instance?.state === 'open') {
+              clearInterval(statusRef.current!);
+              clearInterval(countdownRef.current!);
+              setConnected(true);
+            }
+          } catch {}
+        }, 3000);
       } else {
         setQrData(null);
       }
@@ -51,7 +65,10 @@ function QRModal({ onClose }: { onClose: () => void }) {
   // generates a brand-new QR and invalidates the previous one, making scanning fail.
   useEffect(() => {
     fetchQR();
-    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (statusRef.current) clearInterval(statusRef.current);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const urgency = countdown <= 5 ? 'text-red-500' : countdown <= 10 ? 'text-amber-500' : 'text-green-600';
@@ -127,19 +144,6 @@ function QRModal({ onClose }: { onClose: () => void }) {
                 <button onClick={fetchQR} className="bg-primary text-white px-5 py-2 rounded-xl font-bold text-sm hover:shadow transition-all">Reintentar</button>
               </div>
             )}
-
-            {/* Fallback — always works because Evolution manager uses WebSocket */}
-            <div className="mt-4 pt-4 border-t border-stone-100">
-              <a
-                href={EVOLUTION_MANAGER_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-stone-400 text-xs font-semibold hover:bg-stone-50 hover:text-stone-600 transition-colors"
-              >
-                <span className="material-symbols-outlined text-sm">open_in_new</span>
-                ¿No funciona el QR? Abrí el Manager de Evolution
-              </a>
-            </div>
           </>
         )}
       </div>
