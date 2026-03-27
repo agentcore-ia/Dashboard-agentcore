@@ -59,18 +59,17 @@ function QRModal({ onClose }: { onClose: () => void }) {
       });
       const data = await res.json();
       
-      // Evolution returns pairing code either in 'code' or 'pairingCode' property
       const code = data.code || data.pairingCode || data.pairing_code;
       
-      // Safety check: pairing codes are usually 8-10 chars. 
-      // If code is long (raw QR), the API ignored the 'number' parameter or failed.
       if (code && code.length < 20) {
         setPairingCode(code);
       } else {
-        throw new Error('API returned QR instead of Pairing Code. Check number format.');
+        // If it returns a long code (QR) or an error, show the JSON for debugging
+        const raw = JSON.stringify(data, null, 2);
+        throw new Error(`API returned: ${raw}`);
       }
-    } catch {
-      alert('Error: La API devolvió un QR en lugar del código. Asegurate que el número esté bien (ej: 54911...).');
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
     } finally {
       setPairingLoading(false);
     }
