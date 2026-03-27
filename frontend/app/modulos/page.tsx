@@ -7,54 +7,56 @@ function QRModal({ onClose }: { onClose: () => void }) {
   const [qrData, setQrData] = useState<{ base64?: string; pairingCode?: string; instance?: { state?: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
-  const [countdown, setCountdown] = useState(18);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [countdown, setCountdown] = useState(20);
+  const [expired, setExpired] = useState(false);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchQR = useCallback(async () => {
+    setLoading(true);
+    setExpired(false);
+    setCountdown(20);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+
     try {
-      setLoading(prev => qrData === null ? true : prev); // only show spinner on first load
       const res = await fetch('/api/evolution/qr');
       const data = await res.json();
       if (data.instance?.state === 'open') {
         setConnected(true);
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        if (countdownRef.current) clearInterval(countdownRef.current);
-      } else {
+      } else if (data.base64) {
         setQrData(data);
-        setCountdown(18); // reset countdown on new QR
+        // Countdown only — NO auto-refresh. Each call invalidates the current QR.
+        let t = 20;
+        countdownRef.current = setInterval(() => {
+          t--;
+          setCountdown(t);
+          if (t <= 0) {
+            clearInterval(countdownRef.current!);
+            setExpired(true);
+          }
+        }, 1000);
+      } else {
+        setQrData(null);
       }
     } catch {
-      // ignore network errors
+      setQrData(null);
     } finally {
       setLoading(false);
     }
-  }, [qrData]);
+  }, []);
 
+  // Fetch ONCE on mount. Auto-polling is REMOVED — each call to /instance/connect
+  // generates a brand-new QR and invalidates the previous one, making scanning fail.
   useEffect(() => {
     fetchQR();
-    // Refresh QR every 18s (QRs expire ~20s)
-    intervalRef.current = setInterval(fetchQR, 18000);
-    // Countdown timer
-    countdownRef.current = setInterval(() => {
-      setCountdown(prev => (prev <= 1 ? 18 : prev - 1));
-    }, 1000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const urgency = countdown <= 5 ? 'text-red-500' : countdown <= 10 ? 'text-amber-500' : 'text-stone-400';
-  const ringColor = countdown <= 5 ? 'stroke-red-500' : countdown <= 10 ? 'stroke-amber-500' : 'stroke-primary';
-  const dashOffset = Math.round(((18 - countdown) / 18) * 100);
+  const urgency = countdown <= 5 ? 'text-red-500' : countdown <= 10 ? 'text-amber-500' : 'text-green-600';
+  const barColor = countdown <= 5 ? 'bg-red-500' : countdown <= 10 ? 'bg-amber-500' : 'bg-green-500';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-sm w-full mx-4 relative"
-        onClick={e => e.stopPropagation()}
-      >
+      <div className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-sm w-full mx-4 relative" onClick={e => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200 transition-colors">
           <span className="material-symbols-outlined text-sm">close</span>
         </button>
@@ -64,58 +66,62 @@ function QRModal({ onClose }: { onClose: () => void }) {
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
               <span className="material-symbols-outlined text-green-600 text-3xl fill-icon">check_circle</span>
             </div>
-            <h3 className="font-headline text-xl font-bold text-on-surface mb-2">¡Conectado!</h3>
-            <p className="text-stone-500 text-sm">WhatsApp vinculado correctamente.</p>
+            <h3 className="font-headline text-xl font-bold text-on-surface mb-2">¡Ya estás conectado!</h3>
+            <p className="text-stone-500 text-sm">WhatsApp está vinculado y funcionando.</p>
             <button onClick={onClose} className="mt-6 bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm hover:shadow-lg transition-all">Cerrar</button>
           </div>
         ) : (
           <>
             <div className="text-center mb-5">
-              <h3 className="font-headline text-xl font-bold text-on-surface mb-1">Conectar WhatsApp</h3>
-              <p className="text-stone-500 text-sm">Abrí WhatsApp → ⋮ → Dispositivos vinculados → Vincular dispositivo</p>
+              <h3 className="font-headline text-xl font-bold text-on-surface mb-1">Reconectar WhatsApp</h3>
+              <p className="text-stone-500 text-xs">
+                Abrí WhatsApp → Menú (⋮) → <strong>Dispositivos vinculados</strong> → Vincular dispositivo
+              </p>
             </div>
 
-            {loading && qrData === null ? (
+            {loading ? (
               <div className="w-64 h-64 mx-auto flex items-center justify-center bg-stone-50 rounded-2xl">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
               </div>
+            ) : expired ? (
+              <div className="text-center py-6">
+                <div className="w-16 h-16 rounded-full bg-stone-100 flex items-center justify-center mx-auto mb-4">
+                  <span className="material-symbols-outlined text-stone-400 text-3xl">timer_off</span>
+                </div>
+                <p className="text-stone-500 text-sm mb-4">El código QR expiró.</p>
+                <button
+                  onClick={fetchQR}
+                  className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 mx-auto hover:shadow-lg transition-all active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-sm">refresh</span>
+                  Generar nuevo QR
+                </button>
+              </div>
             ) : qrData?.base64 ? (
               <div className="flex flex-col items-center gap-3">
-                {/* QR with countdown ring overlay */}
                 <div className="relative">
                   <div className="p-3 bg-white rounded-2xl shadow-inner border border-stone-100">
                     <img src={qrData.base64} alt="QR WhatsApp" className="w-56 h-56 rounded-xl" />
                   </div>
-                  {/* Countdown badge top-right */}
-                  <div className={`absolute -top-2 -right-2 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center font-black text-sm ${urgency} border-2 ${countdown <= 5 ? 'border-red-200' : countdown <= 10 ? 'border-amber-200' : 'border-stone-100'}`}>
+                  <div className={`absolute -top-2 -right-2 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center font-black text-sm ${urgency} border-2 border-stone-100`}>
                     {countdown}s
                   </div>
                 </div>
-
-                {/* Progress bar */}
                 <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-1000 ${countdown <= 5 ? 'bg-red-500' : countdown <= 10 ? 'bg-amber-500' : 'bg-primary'}`}
-                    style={{ width: `${(countdown / 18) * 100}%` }}
+                    className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
+                    style={{ width: `${(countdown / 20) * 100}%` }}
                   />
                 </div>
-
-                {qrData.pairingCode && (
-                  <div className="w-full bg-stone-50 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Código alternativo</p>
-                    <p className="font-mono font-black text-xl text-primary tracking-widest">{qrData.pairingCode}</p>
-                  </div>
-                )}
-
                 <p className={`text-xs font-bold text-center ${urgency}`}>
-                  {countdown <= 5 ? '⚠️ ¡Escaneá ahora! El código expira pronto' : `El código se renueva en ${countdown}s`}
+                  {countdown <= 5 ? '⚠️ ¡Escaneá ahora!' : `Válido por ${countdown}s`}
                 </p>
               </div>
             ) : (
               <div className="text-center py-8 text-stone-400">
-                <span className="material-symbols-outlined text-4xl mb-2 block">signal_wifi_connected_no_internet_4</span>
-                <p className="text-sm">No se pudo obtener el QR.<br />Verificá que la instancia esté activa.</p>
-                <button onClick={fetchQR} className="mt-4 text-primary font-bold text-sm">Reintentar</button>
+                <span className="material-symbols-outlined text-4xl mb-2 block">error_outline</span>
+                <p className="text-sm mb-4">No se pudo obtener el QR.</p>
+                <button onClick={fetchQR} className="bg-primary text-white px-5 py-2 rounded-xl font-bold text-sm hover:shadow transition-all">Reintentar</button>
               </div>
             )}
           </>
@@ -207,7 +213,6 @@ const ModulosPage = () => {
             <h3 className="text-xl font-bold text-on-surface mb-3 font-headline">Agente WhatsApp</h3>
             <p className="text-body text-stone-500 leading-relaxed">Automatiza tus conversaciones y pedidos por WhatsApp con inteligencia artificial.</p>
 
-            {/* Live connection status pill */}
             {activeModules.whatsapp && (
               <div className="mt-4 flex items-center gap-2 bg-stone-50 rounded-xl px-3 py-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${sc.dot}`}></span>
@@ -221,23 +226,14 @@ const ModulosPage = () => {
             <span className={`text-xs font-bold tracking-wider uppercase ${activeModules.whatsapp ? "text-primary" : "text-stone-400"}`}>
               {activeModules.whatsapp ? "Activo" : "Inactivo"}
             </span>
-            {activeModules.whatsapp && (
-              waStatus !== 'open' && waStatus !== 'loading' ? (
-                <button
-                  onClick={() => setShowQR(true)}
-                  className="bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
-                >
-                  <span className="material-symbols-outlined text-sm">qr_code_scanner</span>
-                  Reconectar
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowQR(true)}
-                  className="text-primary font-bold text-sm flex items-center gap-1 group-hover:gap-2 transition-all"
-                >
-                  Configurar <span className="material-symbols-outlined text-sm">chevron_right</span>
-                </button>
-              )
+            {activeModules.whatsapp && waStatus !== 'open' && waStatus !== 'loading' && (
+              <button
+                onClick={() => setShowQR(true)}
+                className="bg-primary text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 hover:shadow-md hover:shadow-primary/20 transition-all active:scale-95"
+              >
+                <span className="material-symbols-outlined text-sm">qr_code_scanner</span>
+                Reconectar
+              </button>
             )}
           </div>
         </div>
