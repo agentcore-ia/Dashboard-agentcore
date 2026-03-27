@@ -6,236 +6,129 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 // CORS_ORIGIN=* on the Evolution API allows direct browser calls
 const EVO_URL    = 'https://agentcore-evolution-api.8zp1cp.easypanel.host';
 const EVO_TOKEN  = '465E65D048F8-42B4-B162-4CF3107E70D8'; // instance token
-const EVO_INST   = 'agentcore test';
+const EVO_INST   = 'agentcore';
 
 // ─── QR Code Modal ─────────────────────────────────────────────────────────────
 function QRModal({ onClose }: { onClose: () => void }) {
-  const [mode, setMode] = useState<'qr' | 'pairing'>('qr');
   const [qrBase64, setQrBase64] = useState<string | null>(null);
-  const [qrCount, setQrCount]   = useState<number>(-1);
   const [loading, setLoading]   = useState(true);
   const [connected, setConnected] = useState(false);
-  
-  // Pairing Code states
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [pairingCode, setPairingCode] = useState<string | null>(null);
-  const [pairingLoading, setPairingLoading] = useState(false);
+  const [qrCount, setQrCount]   = useState(0);
 
-  const qrIntervalRef     = useRef<ReturnType<typeof setInterval> | null>(null);
-  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Direct fetch — identical to what Evolution Manager does
   const fetchQR = useCallback(async (showSpinner = false) => {
     if (showSpinner) setLoading(true);
     try {
-      const res  = await fetch(
-        `${EVO_URL}/instance/connect/${encodeURIComponent(EVO_INST)}`,
-        { headers: { apikey: EVO_TOKEN }, cache: 'no-store' }
-      );
-      const data = await res.json();
-      if (data.instance?.state === 'open') { setConnected(true); return; }
-      if (data.base64) {
-        setQrBase64(data.base64);
-        setQrCount(prev => {
-          if (prev !== -1 && prev !== data.count) setLoading(true);
-          return data.count ?? prev;
-        });
-      }
-    } catch { /* keep last QR */ }
-    finally   { setLoading(false); }
-  }, []);
-
-  const handlePairing = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!phoneNumber) return;
-    setPairingLoading(true);
-    setPairingCode(null);
-    try {
-      const num = phoneNumber.replace(/\D/g, '');
-      const res = await fetch('/api/evolution/pairing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: num })
+      // Direct call to Evolution API
+      const res = await fetch(`${EVO_URL}/instance/connect/${EVO_INST}`, {
+        headers: { apikey: EVO_TOKEN },
+        cache: 'no-store'
       });
       const data = await res.json();
       
-      const code = data.code || data.pairingCode || data.pairing_code;
-      
-      if (code && code.length < 20) {
-        setPairingCode(code);
-      } else {
-        // If it returns a long code (QR) or an error, show the JSON for debugging
-        const raw = JSON.stringify(data, null, 2);
-        throw new Error(`API returned: ${raw}`);
+      // If the instance is already open, show success
+      if (data.instance?.state === 'open' || data.status === 'open') {
+        setConnected(true);
+        return;
       }
-    } catch (err: any) {
-      alert(`Error: ${err.message}`);
-    } finally {
-      setPairingLoading(false);
-    }
-  };
 
-  const checkStatus = useCallback(async () => {
-    try {
-      const sr = await fetch('/api/evolution/status');
-      const sd = await sr.json();
-      if (sd.instance?.state === 'open') setConnected(true);
-    } catch {}
+      if (data.base64) {
+        setQrBase64(data.base64);
+        setQrCount(data.count || 0);
+      }
+    } catch (err) {
+      console.error('QR Fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    if (mode === 'qr') {
-      fetchQR(true);
-      qrIntervalRef.current = setInterval(() => fetchQR(false), 7000);
-    } else {
-      if (qrIntervalRef.current) {
-        clearInterval(qrIntervalRef.current);
-        qrIntervalRef.current = null;
-      }
-    }
-
-    statusIntervalRef.current = setInterval(checkStatus, 3000);
-    return () => {
-      if (qrIntervalRef.current)     clearInterval(qrIntervalRef.current);
-      if (statusIntervalRef.current) clearInterval(statusIntervalRef.current);
-    };
-  }, [mode, fetchQR, checkStatus]);
+    fetchQR(true);
+    const interval = setInterval(() => fetchQR(false), 10000); // 10s refresh for sync
+    return () => clearInterval(interval);
+  }, [fetchQR]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-sm w-full mx-4 relative" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500 hover:bg-stone-200 transition-colors">
-          <span className="material-symbols-outlined text-sm">close</span>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-900/60 backdrop-blur-md transition-all duration-300" onClick={onClose}>
+      <div 
+        className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full mx-4 relative border border-stone-200" 
+        onClick={e => e.stopPropagation()}
+      >
+        <button onClick={onClose} className="absolute top-6 right-6 w-10 h-10 rounded-full bg-stone-50 flex items-center justify-center text-stone-400 hover:bg-stone-100 transition-all">
+          <span className="material-symbols-outlined text-lg">close</span>
         </button>
 
         {connected ? (
-          <div className="text-center py-8">
-            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-              <span className="material-symbols-outlined text-green-600 text-3xl fill-icon">check_circle</span>
+          <div className="text-center py-10 animate-in fade-in zoom-in duration-500">
+            <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-6 shadow-sm border border-green-100">
+              <span className="material-symbols-outlined text-green-500 text-4xl font-black fill-icon">check</span>
             </div>
-            <h3 className="font-headline text-xl font-bold text-on-surface mb-2">¡Conectado!</h3>
-            <p className="text-stone-500 text-sm">WhatsApp vinculado correctamente.</p>
-            <button onClick={onClose} className="mt-6 bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm hover:shadow-lg transition-all">Cerrar</button>
+            <h3 className="font-headline text-2xl font-black text-stone-800 mb-2">¡Conectado!</h3>
+            <p className="text-stone-500 text-sm mb-8 leading-relaxed px-4">El agente de WhatsApp ya está activo en tu cuenta.</p>
+            <button 
+              onClick={onClose} 
+              className="w-full bg-stone-800 text-white py-4 rounded-2xl font-black text-sm tracking-widest uppercase hover:bg-black transition-all shadow-lg"
+            >
+              Finalizar
+            </button>
           </div>
         ) : (
-          <>
-            <div className="text-center mb-6">
-              <h3 className="font-headline text-xl font-bold text-on-surface mb-4">Conectar WhatsApp</h3>
-              
-              <div className="flex bg-stone-100 p-1 rounded-xl mb-6">
-                <button 
-                  onClick={() => setMode('qr')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${mode === 'qr' ? 'bg-white text-primary shadow-sm' : 'text-stone-400 opacity-60'}`}
-                >
-                  Código QR
-                </button>
-                <button 
-                  onClick={() => setMode('pairing')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${mode === 'pairing' ? 'bg-white text-primary shadow-sm' : 'text-stone-400 opacity-60'}`}
-                >
-                  Número de Teléfono
-                </button>
-              </div>
-
-              {mode === 'qr' ? (
-                <p className="text-stone-500 text-xs">
-                  Abrí WhatsApp → Menú (<strong>⋮</strong>) → <strong>Dispositivos vinculados</strong> → Vincular dispositivo
-                </p>
-              ) : (
-                <p className="text-stone-500 text-xs text-center px-4">
-                  Vinculá usando tu número. Recibirás un código de 8 dígitos para ingresar en tu app de WhatsApp.
-                </p>
-              )}
+          <div className="flex flex-col items-center">
+            <div className="text-center mb-10">
+              <h3 className="font-headline text-2xl font-black text-stone-800 mb-3 tracking-tight">Vincular WhatsApp</h3>
+              <p className="text-stone-400 text-xs leading-relaxed max-w-[240px] mx-auto">
+                Escaneá este código QR desde tu app para activar las respuestas automáticas.
+              </p>
             </div>
 
-            {mode === 'qr' ? (
-              loading && !qrBase64 ? (
-                <div className="w-60 h-60 mx-auto flex flex-col items-center justify-center bg-stone-50 rounded-2xl gap-3">
-                  <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-xs text-stone-400">Obteniendo código QR...</p>
-                </div>
-              ) : qrBase64 ? (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="relative">
-                    <div className={`p-3 bg-white rounded-2xl shadow-inner border border-stone-100 transition-opacity duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
-                      <img src={qrBase64} alt="QR WhatsApp" className="w-56 h-56 rounded-xl" />
-                    </div>
+            <div className="relative group">
+              {/* Decorative background blur */}
+              <div className="absolute -inset-6 bg-primary/10 rounded-[4rem] blur-2xl opacity-40 group-hover:opacity-60 transition duration-1000"></div>
+              
+              <div className="relative w-64 h-64 bg-white rounded-[2.5rem] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.08)] border border-stone-100 flex items-center justify-center overflow-hidden">
+                {loading && !qrBase64 ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-10 h-10 border-[3px] border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                    <p className="text-[10px] font-black text-primary/40 uppercase tracking-[0.2em]">Cargando...</p>
+                  </div>
+                ) : qrBase64 ? (
+                  <div className="relative w-full h-full flex items-center justify-center transition-all duration-300">
+                    <img 
+                      src={qrBase64} 
+                      alt="WhatsApp QR" 
+                      className={`w-full h-full rounded-2xl transition-opacity duration-300 ${loading ? 'opacity-30' : 'opacity-100'}`} 
+                    />
                     {loading && (
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                       </div>
                     )}
-                    <div className="absolute -top-2 -right-2 bg-primary/10 text-primary border border-primary/20 rounded-full px-2 py-0.5 text-[10px] font-black">
-                      #{qrCount}
-                    </div>
                   </div>
-                  <div className="w-full bg-stone-50 rounded-xl px-3 py-2 text-center text-[10px] text-stone-400 font-semibold uppercase tracking-wider">
-                    Actualizando automáticamente...
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-stone-400">
-                  <span className="material-symbols-outlined text-4xl mb-2 block">error_outline</span>
-                  <p className="text-sm mb-4">No se pudo obtener el QR.</p>
-                  <button onClick={() => fetchQR(true)} className="bg-primary text-white px-5 py-2 rounded-xl font-bold text-sm">Reintentar</button>
-                </div>
-              )
-            ) : (
-              <div className="flex flex-col gap-4">
-                {!pairingCode ? (
-                  <form onSubmit={handlePairing} className="flex flex-col gap-3">
-                    <div className="relative">
-                      <input 
-                        type="text"
-                        placeholder="Ej: 54911..."
-                        value={phoneNumber}
-                        onChange={e => setPhoneNumber(e.target.value)}
-                        className="w-full bg-stone-50 border border-stone-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all text-on-surface"
-                        autoFocus
-                      />
-                      <span className="absolute right-4 top-3.5 material-symbols-outlined text-stone-300">phone_iphone</span>
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={pairingLoading || !phoneNumber}
-                      className="w-full bg-primary text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:translate-y-0 disabled:shadow-none"
-                    >
-                      {pairingLoading ? (
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto"></div>
-                      ) : 'Generar Código'}
-                    </button>
-                    <p className="text-[10px] text-stone-400 text-center uppercase tracking-wider font-bold">Incluí el código de país (54...)</p>
-                  </form>
                 ) : (
-                  <div className="bg-stone-50 p-6 rounded-[2rem] border border-stone-100 flex flex-col items-center">
-                    <p className="text-xs text-stone-400 font-bold mb-4 uppercase tracking-widest text-center">Ingresá este código en WhatsApp</p>
-                    <div className="flex flex-wrap items-center justify-center gap-2 mb-6 max-w-xs">
-                      {pairingCode.replace(/-/g, '').split('').map((char, i) => (
-                        <div key={i} className="w-9 h-11 bg-white rounded-lg shadow-sm border border-stone-100 flex items-center justify-center text-lg font-black text-primary">
-                          {char}
-                        </div>
-                      ))}
-                    </div>
-                    <button 
-                      onClick={() => setPairingCode(null)}
-                      className="text-primary text-[10px] font-black uppercase tracking-wider underline opacity-60 hover:opacity-100"
-                    >
-                      Usar otro número
-                    </button>
+                  <div className="text-center p-4">
+                    <span className="material-symbols-outlined text-stone-200 text-4xl mb-3">cloud_off</span>
+                    <p className="text-[10px] text-stone-300 font-bold uppercase tracking-widest">Error de conexión</p>
+                    <button onClick={() => fetchQR(true)} className="mt-4 text-primary text-[10px] font-black uppercase tracking-widest border-b-2 border-primary/20 hover:border-primary transition-all pb-1">Reintentar</button>
                   </div>
                 )}
-                
-                <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
-                  <div className="flex gap-3">
-                    <span className="material-symbols-outlined text-primary text-xl">info</span>
-                    <p className="text-[10px] text-primary/70 font-semibold leading-relaxed">
-                      En WhatsApp: Menú → Dispositivos vinculados → Vincular dispositivo → <strong>Vincular con número de teléfono</strong>.
-                    </p>
-                  </div>
+              </div>
+            </div>
+
+            <div className="mt-12 w-full space-y-4">
+              <div className="flex items-center gap-3 bg-stone-50 p-4 rounded-2xl border border-stone-100">
+                <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-stone-400 shadow-sm shrink-0 border border-stone-50">
+                  <span className="material-symbols-outlined text-sm">devices</span>
+                </div>
+                <div className="text-[10px] text-stone-500 font-medium leading-normal">
+                  WhatsApp → Menú → <strong>Dispositivos vinculados</strong> → Vincular dispositivo
                 </div>
               </div>
-            )}
-          </>
+              <div className="flex items-center justify-center gap-2 text-[9px] font-bold text-stone-300 uppercase tracking-[0.3em]">
+                <div className="w-1 h-1 rounded-full bg-green-400 animate-pulse"></div>
+                Sincronización Activa #{qrCount}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

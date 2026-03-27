@@ -5,7 +5,7 @@ const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://agentcore-ev
 // IMPORTANT: Use the INSTANCE TOKEN (not global key) for /instance/connect
 // This is how the Evolution API Manager does it and is required for valid QR generation
 const INSTANCE_TOKEN = process.env.EVOLUTION_INSTANCE_TOKEN || '465E65D048F8-42B4-B162-4CF3107E70D8';
-const INSTANCE_NAME  = process.env.EVOLUTION_INSTANCE_NAME  || 'agentcore test';
+const INSTANCE_NAME  = process.env.EVOLUTION_INSTANCE_NAME  || 'agentcore';
 
 export async function GET() {
   try {
