@@ -11,18 +11,21 @@ export async function POST(req: Request) {
 
     const cleanNumber = number.replace(/\D/g, '');
     
-    // 1. Force a logout or reset if needed (sometimes helps)
-    // we use /instance/logout or /instance/delete (not ideal) or just restart
-    const restartUrl = `${EVOLUTION_API_URL}/instance/restart/${encodeURIComponent(INSTANCE_NAME)}`;
+    // 1. Update instance settings to prefer Pairing Code
+    const updateUrl = `${EVOLUTION_API_URL}/instance/update/${encodeURIComponent(INSTANCE_NAME)}`;
+    console.log('Enabling Pairing Code mode in settings:', updateUrl);
     
-    console.log('Restarting instance:', restartUrl);
-    await fetch(restartUrl, { 
-      method: 'POST', 
-      headers: { apikey: INSTANCE_TOKEN } 
+    await fetch(updateUrl, {
+      method: 'PATCH',
+      headers: { 
+        'Content-Type': 'application/json',
+        'apikey': INSTANCE_TOKEN 
+      },
+      body: JSON.stringify({ 
+        "integration": "whatsapp",
+        "pairingCode": true 
+      })
     }).catch(() => {});
-
-    // Wait 2 seconds for the instance to initialize a new session
-    await new Promise(r => setTimeout(r, 2000));
 
     // 2. Request pairing code
     const connectUrl = `${EVOLUTION_API_URL}/instance/connect/${encodeURIComponent(INSTANCE_NAME)}?number=${cleanNumber}`;
