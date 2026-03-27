@@ -7,30 +7,47 @@ function QRModal({ onClose }: { onClose: () => void }) {
   const [qrData, setQrData] = useState<{ base64?: string; pairingCode?: string; instance?: { state?: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
+  const [countdown, setCountdown] = useState(18);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchQR = useCallback(async () => {
     try {
+      setLoading(prev => qrData === null ? true : prev); // only show spinner on first load
       const res = await fetch('/api/evolution/qr');
       const data = await res.json();
       if (data.instance?.state === 'open') {
         setConnected(true);
         if (intervalRef.current) clearInterval(intervalRef.current);
+        if (countdownRef.current) clearInterval(countdownRef.current);
       } else {
         setQrData(data);
+        setCountdown(18); // reset countdown on new QR
       }
     } catch {
-      // ignore
+      // ignore network errors
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [qrData]);
 
   useEffect(() => {
     fetchQR();
-    intervalRef.current = setInterval(fetchQR, 30000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [fetchQR]);
+    // Refresh QR every 18s (QRs expire ~20s)
+    intervalRef.current = setInterval(fetchQR, 18000);
+    // Countdown timer
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => (prev <= 1 ? 18 : prev - 1));
+    }, 1000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const urgency = countdown <= 5 ? 'text-red-500' : countdown <= 10 ? 'text-amber-500' : 'text-stone-400';
+  const ringColor = countdown <= 5 ? 'stroke-red-500' : countdown <= 10 ? 'stroke-amber-500' : 'stroke-primary';
+  const dashOffset = Math.round(((18 - countdown) / 18) * 100);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -49,33 +66,50 @@ function QRModal({ onClose }: { onClose: () => void }) {
             </div>
             <h3 className="font-headline text-xl font-bold text-on-surface mb-2">¡Conectado!</h3>
             <p className="text-stone-500 text-sm">WhatsApp vinculado correctamente.</p>
-            <button onClick={onClose} className="mt-6 bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm hover:shadow-lg transition-all">
-              Cerrar
-            </button>
+            <button onClick={onClose} className="mt-6 bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm hover:shadow-lg transition-all">Cerrar</button>
           </div>
         ) : (
           <>
-            <div className="text-center mb-6">
+            <div className="text-center mb-5">
               <h3 className="font-headline text-xl font-bold text-on-surface mb-1">Conectar WhatsApp</h3>
-              <p className="text-stone-500 text-sm">Escaneá el código QR con tu WhatsApp</p>
+              <p className="text-stone-500 text-sm">Abrí WhatsApp → ⋮ → Dispositivos vinculados → Vincular dispositivo</p>
             </div>
 
-            {loading ? (
+            {loading && qrData === null ? (
               <div className="w-64 h-64 mx-auto flex items-center justify-center bg-stone-50 rounded-2xl">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
               </div>
             ) : qrData?.base64 ? (
-              <div className="flex flex-col items-center gap-4">
-                <div className="p-3 bg-white rounded-2xl shadow-inner border border-stone-100">
-                  <img src={qrData.base64} alt="QR WhatsApp" className="w-56 h-56 rounded-xl" />
+              <div className="flex flex-col items-center gap-3">
+                {/* QR with countdown ring overlay */}
+                <div className="relative">
+                  <div className="p-3 bg-white rounded-2xl shadow-inner border border-stone-100">
+                    <img src={qrData.base64} alt="QR WhatsApp" className="w-56 h-56 rounded-xl" />
+                  </div>
+                  {/* Countdown badge top-right */}
+                  <div className={`absolute -top-2 -right-2 w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center font-black text-sm ${urgency} border-2 ${countdown <= 5 ? 'border-red-200' : countdown <= 10 ? 'border-amber-200' : 'border-stone-100'}`}>
+                    {countdown}s
+                  </div>
                 </div>
+
+                {/* Progress bar */}
+                <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ${countdown <= 5 ? 'bg-red-500' : countdown <= 10 ? 'bg-amber-500' : 'bg-primary'}`}
+                    style={{ width: `${(countdown / 18) * 100}%` }}
+                  />
+                </div>
+
                 {qrData.pairingCode && (
                   <div className="w-full bg-stone-50 rounded-xl p-3 text-center">
-                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Código de vinculación</p>
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest font-bold mb-1">Código alternativo</p>
                     <p className="font-mono font-black text-xl text-primary tracking-widest">{qrData.pairingCode}</p>
                   </div>
                 )}
-                <p className="text-[11px] text-stone-400 text-center">El código se renueva automáticamente cada 30 segundos</p>
+
+                <p className={`text-xs font-bold text-center ${urgency}`}>
+                  {countdown <= 5 ? '⚠️ ¡Escaneá ahora! El código expira pronto' : `El código se renueva en ${countdown}s`}
+                </p>
               </div>
             ) : (
               <div className="text-center py-8 text-stone-400">
