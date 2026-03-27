@@ -10,10 +10,10 @@ export async function POST(req: Request) {
     const { number } = await req.json();
     if (!number) return NextResponse.json({ error: 'number required' }, { status: 400 });
 
-    // Ensure number has '+' prefix if missing (required by some API versions)
-    const formattedNumber = number.startsWith('+') ? number : `+${number}`;
-    const url = `${EVOLUTION_API_URL}/instance/connect/${encodeURIComponent(INSTANCE_NAME)}?number=${encodeURIComponent(formattedNumber)}`;
-    console.log('Fetching Pairing Code from:', url);
+    // Some versions of Evolution API prefer the number WITHOUT the '+' prefix
+    const cleanNumber = number.replace(/\D/g, '');
+    const url = `${EVOLUTION_API_URL}/instance/connect/${encodeURIComponent(INSTANCE_NAME)}?number=${cleanNumber}`;
+    console.log('Fetching Pairing Code (Clean Number) from:', url);
 
     // Request pairing code from Evolution API
     const res = await fetch(url, {
@@ -23,9 +23,9 @@ export async function POST(req: Request) {
       }
     );
     const data = await res.json();
-    console.log('Evolution API Response Structure:', Object.keys(data));
+    console.log('Evolution API Response:', data);
     
-    // Return the raw data to the frontend so we can see the full response on failure
+    // Return to frontend
     return NextResponse.json(data);
   } catch (e) {
     return NextResponse.json({ error: 'Failed to get pairing code' }, { status: 500 });
