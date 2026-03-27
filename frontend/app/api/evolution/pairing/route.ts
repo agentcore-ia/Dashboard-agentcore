@@ -11,6 +11,13 @@ export async function POST(req: Request) {
 
     const cleanNumber = number.replace(/\D/g, '');
     
+    // 0. Verify instance exists and what its name is
+    const fetchRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, {
+      headers: { apikey: INSTANCE_TOKEN }
+    });
+    const instances = await fetchRes.json();
+    console.log('Available Instances:', instances.map((i: any) => i.instanceName));
+    
     // 1. Update instance settings to prefer Pairing Code
     const updateUrl = `${EVOLUTION_API_URL}/instance/update/${encodeURIComponent(INSTANCE_NAME)}`;
     console.log('Enabling Pairing Code mode in settings:', updateUrl);
@@ -52,7 +59,13 @@ export async function POST(req: Request) {
        if (fdata.code || fdata.pairingCode) data = fdata;
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({
+       ...data,
+       _debug: {
+           all_instances: instances.map((i: any) => i.instanceName),
+           instance_used: INSTANCE_NAME
+       }
+    });
   } catch (e) {
     return NextResponse.json({ error: 'Failed to get pairing code' }, { status: 500 });
   }
