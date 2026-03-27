@@ -2,30 +2,33 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
+const EVOLUTION_MANAGER_URL = 'https://agentcore-evolution-api.8zp1cp.easypanel.host/manager';
+
 // ─── QR Code Modal ─────────────────────────────────────────────────────────────
 function QRModal({ onClose }: { onClose: () => void }) {
   const [qrData, setQrData] = useState<{ base64?: string; pairingCode?: string; instance?: { state?: string } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
-  const [countdown, setCountdown] = useState(20);
+  const [countdown, setCountdown] = useState(25);
   const [expired, setExpired] = useState(false);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchQR = useCallback(async () => {
     setLoading(true);
     setExpired(false);
-    setCountdown(20);
+    setQrData(null);
+    setCountdown(25);
     if (countdownRef.current) clearInterval(countdownRef.current);
 
     try {
-      const res = await fetch('/api/evolution/qr');
+      // /reconnect = logout first then connect = guaranteed fresh QR (count:1)
+      const res = await fetch('/api/evolution/reconnect', { method: 'POST' });
       const data = await res.json();
       if (data.instance?.state === 'open') {
         setConnected(true);
       } else if (data.base64) {
         setQrData(data);
-        // Countdown only — NO auto-refresh. Each call invalidates the current QR.
-        let t = 20;
+        let t = 25;
         countdownRef.current = setInterval(() => {
           t--;
           setCountdown(t);
@@ -110,7 +113,7 @@ function QRModal({ onClose }: { onClose: () => void }) {
                 <div className="w-full bg-stone-100 rounded-full h-1.5 overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
-                    style={{ width: `${(countdown / 20) * 100}%` }}
+                    style={{ width: `${(countdown / 25) * 100}%` }}
                   />
                 </div>
                 <p className={`text-xs font-bold text-center ${urgency}`}>
@@ -124,6 +127,19 @@ function QRModal({ onClose }: { onClose: () => void }) {
                 <button onClick={fetchQR} className="bg-primary text-white px-5 py-2 rounded-xl font-bold text-sm hover:shadow transition-all">Reintentar</button>
               </div>
             )}
+
+            {/* Fallback — always works because Evolution manager uses WebSocket */}
+            <div className="mt-4 pt-4 border-t border-stone-100">
+              <a
+                href={EVOLUTION_MANAGER_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-stone-400 text-xs font-semibold hover:bg-stone-50 hover:text-stone-600 transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">open_in_new</span>
+                ¿No funciona el QR? Abrí el Manager de Evolution
+              </a>
+            </div>
           </>
         )}
       </div>
