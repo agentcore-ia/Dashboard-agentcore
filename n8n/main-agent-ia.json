@@ -1,6 +1,10 @@
 {
+  "updatedAt": "2026-03-28T04:55:55.510Z",
+  "createdAt": "2026-03-17T17:24:36.605Z",
+  "id": "Sbf4ewHwOCdsruMv",
   "name": "Agente IA Restaurante - Evolution API",
   "description": null,
+  "active": true,
   "isArchived": false,
   "nodes": [
     {
@@ -1385,7 +1389,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst messages = $input.all();\n\nlet texts = [];\nfor (const m of messages) {\n    const content = (m.json.content || m.json.message || '').trim();\n    if (!content) continue;\n    if (content.toLowerCase() === '/clear') break;\n    texts.push(content);\n}\n\nconst combinedText = texts.reverse().join('\\n\\n');\nconst latestMsg = messages.length > 0 ? messages[0].json : {};\n\n// Get the WhatsApp message ID of the CURRENT execution's incoming message\nconst currentWAMsgId = (\n  $node[\"WhatsApp Trigger\"]?.json?.body?.data?.key?.id || \n  $node[\"Edit Fields\"]?.json?.messageId ||\n  ''\n);\n\n// The latest DB message's wa_message_id (stored when we log incoming messages)\nconst latestDbMsgId = (latestMsg.wa_message_id || latestMsg.external_id || '');\n\n// Current message content (fallback for ID-based comparison)\nconst currentContent = (\n  $node[\"Edit Fields\"]?.json?.message ||\n  $node[\"Fields\"]?.json?.message ||\n  $node[\"WhatsApp Trigger\"]?.json?.body?.data?.message?.conversation ||\n  $node[\"WhatsApp Trigger\"]?.json?.body?.data?.message?.extendedTextMessage?.text ||\n  ''\n).trim();\nconst latestContent = (latestMsg.content || '').trim();\n\n// isLastMessage = true ONLY if no newer message exists in DB\n// Preference: compare by ID. Fallback: compare by content.\nlet isLastMessage;\nif (currentWAMsgId && latestDbMsgId) {\n  isLastMessage = currentWAMsgId === latestDbMsgId;\n} else {\n  // Fallback: if the latest DB message content matches current content, it's the last\n  isLastMessage = latestContent === currentContent || currentContent === '';\n}\n\nreturn [{\n  json: {\n    ...latestMsg,\n    isLastMessage,\n    combinedText: combinedText || latestMsg.content || ''\n  }\n}];\n"
+        "jsCode": "\nconst messages = $input.all();\nconsole.log('[CheckLastMsg] Processing ' + messages.length + ' items');\n\nlet texts = [];\nfor (const m of messages) {\n    const content = (m.json.content || m.json.message || '').trim();\n    if (!content) continue;\n    if (content.toLowerCase() === '/clear') break;\n    texts.push(content);\n}\n\nconst combinedText = texts.reverse().join('\\n\\n');\nconst latestMsg = messages.length > 0 ? messages[0].json : {};\n\n// Get the WhatsApp message ID of the CURRENT execution\nconst triggerNode = $('WhatsApp Trigger');\nconst currentWAMsgId = triggerNode.first().json.body?.data?.key?.id || '';\nconst latestDbMsgId = latestMsg.wa_message_id || latestMsg.external_id || '';\n\nconst currentContent = (\n  triggerNode.first().json.body?.data?.message?.conversation ||\n  triggerNode.first().json.body?.data?.message?.extendedTextMessage?.text ||\n  ''\n).trim();\n\nconst latestContent = (latestMsg.content || '').trim();\n\nlet isLastMessage = false;\n\nif (currentWAMsgId && latestDbMsgId) {\n  isLastMessage = (currentWAMsgId === latestDbMsgId);\n} else if (currentContent && latestContent) {\n  isLastMessage = (latestContent === currentContent);\n} else {\n  // If no previous history or missing IDs, default to true\n  isLastMessage = (messages.length === 0 || currentContent === '');\n}\n\nconsole.log('[CheckLastMsg] Result: ' + isLastMessage + ' (CurID: ' + currentWAMsgId + ', DBID: ' + latestDbMsgId + ')');\n\nreturn [{\n  json: {\n    ...latestMsg, // Mantener campos del último mensaje (nombre, etc)\n    isLastMessage,\n    combinedText: combinedText || latestMsg.content || ''\n  }\n}];\n"
       },
       "id": "code-check-is-last-msg",
       "name": "Check Is Last Message",
@@ -2502,9 +2506,9 @@
   "staticData": {
     "global": {
       "5492346684702@s.whatsapp.net": {
-        "v": 49,
-        "resetAt": "2026-03-26T17:41:33.629Z",
-        "lastMsg": 1774548431417
+        "v": 50,
+        "resetAt": "2026-03-28T04:36:08.929Z",
+        "lastMsg": 1774672568929
       },
       "5492346304645@s.whatsapp.net": {
         "v": 2,
@@ -2520,9 +2524,9 @@
     "templateCredsSetupCompleted": true
   },
   "pinData": {},
-  "versionId": "e0dd4245-3f40-4ce0-a82c-29290b5ba8ed",
-  "activeVersionId": "e0dd4245-3f40-4ce0-a82c-29290b5ba8ed",
-  "versionCounter": 940,
+  "versionId": "5a8cbfcf-a37b-4c39-8d0b-eef5498613fc",
+  "activeVersionId": "5a8cbfcf-a37b-4c39-8d0b-eef5498613fc",
+  "versionCounter": 944,
   "triggerCount": 1,
   "shared": [
     {
@@ -2545,9 +2549,9 @@
   ],
   "tags": [],
   "activeVersion": {
-    "updatedAt": "2026-03-28T04:09:12.592Z",
-    "createdAt": "2026-03-28T04:09:12.592Z",
-    "versionId": "e0dd4245-3f40-4ce0-a82c-29290b5ba8ed",
+    "updatedAt": "2026-03-28T04:55:55.514Z",
+    "createdAt": "2026-03-28T04:55:55.514Z",
+    "versionId": "5a8cbfcf-a37b-4c39-8d0b-eef5498613fc",
     "workflowId": "Sbf4ewHwOCdsruMv",
     "nodes": [
       {
@@ -3932,7 +3936,7 @@
       },
       {
         "parameters": {
-          "jsCode": "\nconst messages = $input.all();\n\nlet texts = [];\nfor (const m of messages) {\n    const content = (m.json.content || m.json.message || '').trim();\n    if (!content) continue;\n    if (content.toLowerCase() === '/clear') break;\n    texts.push(content);\n}\n\nconst combinedText = texts.reverse().join('\\n\\n');\nconst latestMsg = messages.length > 0 ? messages[0].json : {};\n\n// Get the WhatsApp message ID of the CURRENT execution's incoming message\nconst currentWAMsgId = (\n  $node[\"WhatsApp Trigger\"]?.json?.body?.data?.key?.id || \n  $node[\"Edit Fields\"]?.json?.messageId ||\n  ''\n);\n\n// The latest DB message's wa_message_id (stored when we log incoming messages)\nconst latestDbMsgId = (latestMsg.wa_message_id || latestMsg.external_id || '');\n\n// Current message content (fallback for ID-based comparison)\nconst currentContent = (\n  $node[\"Edit Fields\"]?.json?.message ||\n  $node[\"Fields\"]?.json?.message ||\n  $node[\"WhatsApp Trigger\"]?.json?.body?.data?.message?.conversation ||\n  $node[\"WhatsApp Trigger\"]?.json?.body?.data?.message?.extendedTextMessage?.text ||\n  ''\n).trim();\nconst latestContent = (latestMsg.content || '').trim();\n\n// isLastMessage = true ONLY if no newer message exists in DB\n// Preference: compare by ID. Fallback: compare by content.\nlet isLastMessage;\nif (currentWAMsgId && latestDbMsgId) {\n  isLastMessage = currentWAMsgId === latestDbMsgId;\n} else {\n  // Fallback: if the latest DB message content matches current content, it's the last\n  isLastMessage = latestContent === currentContent || currentContent === '';\n}\n\nreturn [{\n  json: {\n    ...latestMsg,\n    isLastMessage,\n    combinedText: combinedText || latestMsg.content || ''\n  }\n}];\n"
+          "jsCode": "\nconst messages = $input.all();\nconsole.log('[CheckLastMsg] Processing ' + messages.length + ' items');\n\nlet texts = [];\nfor (const m of messages) {\n    const content = (m.json.content || m.json.message || '').trim();\n    if (!content) continue;\n    if (content.toLowerCase() === '/clear') break;\n    texts.push(content);\n}\n\nconst combinedText = texts.reverse().join('\\n\\n');\nconst latestMsg = messages.length > 0 ? messages[0].json : {};\n\n// Get the WhatsApp message ID of the CURRENT execution\nconst triggerNode = $('WhatsApp Trigger');\nconst currentWAMsgId = triggerNode.first().json.body?.data?.key?.id || '';\nconst latestDbMsgId = latestMsg.wa_message_id || latestMsg.external_id || '';\n\nconst currentContent = (\n  triggerNode.first().json.body?.data?.message?.conversation ||\n  triggerNode.first().json.body?.data?.message?.extendedTextMessage?.text ||\n  ''\n).trim();\n\nconst latestContent = (latestMsg.content || '').trim();\n\nlet isLastMessage = false;\n\nif (currentWAMsgId && latestDbMsgId) {\n  isLastMessage = (currentWAMsgId === latestDbMsgId);\n} else if (currentContent && latestContent) {\n  isLastMessage = (latestContent === currentContent);\n} else {\n  // If no previous history or missing IDs, default to true\n  isLastMessage = (messages.length === 0 || currentContent === '');\n}\n\nconsole.log('[CheckLastMsg] Result: ' + isLastMessage + ' (CurID: ' + currentWAMsgId + ', DBID: ' + latestDbMsgId + ')');\n\nreturn [{\n  json: {\n    ...latestMsg, // Mantener campos del último mensaje (nombre, etc)\n    isLastMessage,\n    combinedText: combinedText || latestMsg.content || ''\n  }\n}];\n"
         },
         "id": "code-check-is-last-msg",
         "name": "Check Is Last Message",
@@ -5044,18 +5048,18 @@
     "autosaved": false,
     "workflowPublishHistory": [
       {
-        "createdAt": "2026-03-28T04:09:12.705Z",
-        "id": 357,
+        "createdAt": "2026-03-28T04:55:55.660Z",
+        "id": 359,
         "workflowId": "Sbf4ewHwOCdsruMv",
-        "versionId": "e0dd4245-3f40-4ce0-a82c-29290b5ba8ed",
+        "versionId": "5a8cbfcf-a37b-4c39-8d0b-eef5498613fc",
         "event": "activated",
         "userId": "6704710c-953e-4637-8393-b7e996be2b7a"
       },
       {
-        "createdAt": "2026-03-28T04:09:12.680Z",
-        "id": 356,
+        "createdAt": "2026-03-28T04:55:55.632Z",
+        "id": 358,
         "workflowId": "Sbf4ewHwOCdsruMv",
-        "versionId": "e0dd4245-3f40-4ce0-a82c-29290b5ba8ed",
+        "versionId": "5a8cbfcf-a37b-4c39-8d0b-eef5498613fc",
         "event": "deactivated",
         "userId": "6704710c-953e-4637-8393-b7e996be2b7a"
       }
