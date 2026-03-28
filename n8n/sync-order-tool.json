@@ -1,0 +1,216 @@
+{
+  "name": "Sync Order SubWorkflow (Execute Tool)",
+  "description": null,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-node",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1_bH6nbGBJ9RHcvS13pmxUljWHCZfSyu_oDIcZqhtfsA",
+          "mode": "list",
+          "cachedResultName": "PEDIDOS"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Pedido": "={{ $json.pedido }}",
+            "nombre": "={{ $json.nombre }}",
+            "direccion": "={{ $json.direccion }}",
+            "numero": "={{ $json.numero }}",
+            "hora": "={{ new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) }}",
+            "fecha": "={{ new Date().toLocaleDateString('es-AR') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Pedido",
+              "displayName": "Pedido"
+            },
+            {
+              "id": "nombre",
+              "displayName": "nombre"
+            },
+            {
+              "id": "direccion",
+              "displayName": "direccion"
+            },
+            {
+              "id": "numero",
+              "displayName": "numero"
+            },
+            {
+              "id": "hora",
+              "displayName": "hora"
+            },
+            {
+              "id": "fecha",
+              "displayName": "fecha"
+            }
+          ]
+        },
+        "authentication": "serviceAccount"
+      },
+      "id": "gsheets-node",
+      "name": "Google Sheets Append",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        200,
+        0
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "arXdf3W6VBf10ZlU",
+          "name": "Google Sheets Service Account (Agentcore)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://eqnjyygokjinmsfvogxi.supabase.co/rest/v1/clientes?phone=eq.{{ $json.numero }}&select=id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbmp5eWdva2ppbm1zZnZvZ3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NzcxMjEsImV4cCI6MjA4OTI1MzEyMX0.BrVsESdtgMBnPjfZfwreg7PWg-HIgiLO5-QoN0qqbkE"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supabase-get",
+      "name": "Get Cliente ID",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://eqnjyygokjinmsfvogxi.supabase.co/rest/v1/pedidos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbmp5eWdva2ppbm1zZnZvZ3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NzcxMjEsImV4cCI6MjA4OTI1MzEyMX0.BrVsESdtgMBnPjfZfwreg7PWg-HIgiLO5-QoN0qqbkE"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cliente_id: $json[0]?.id || null, notes: $('Execute Workflow Trigger').first().json.pedido || 'N/A', address: $('Execute Workflow Trigger').first().json.direccion || 'N/A', status: 'new', delivery_type: 'delivery', payment_method: 'cash', total: 0 }) }}",
+        "options": {}
+      },
+      "id": "supabase-post",
+      "name": "Post Pedido",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets Append",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets Append": {
+      "main": [
+        [
+          {
+            "node": "Get Cliente ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Cliente ID": {
+      "main": [
+        [
+          {
+            "node": "Post Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "versionId": "dddb879b-7c3d-4ce7-985c-5d5aa37fc1a2",
+  "activeVersionId": null,
+  "versionCounter": 6,
+  "triggerCount": 0,
+  "shared": [
+    {
+      "updatedAt": "2026-03-20T02:33:19.733Z",
+      "createdAt": "2026-03-20T02:33:19.733Z",
+      "role": "workflow:owner",
+      "workflowId": "7kr1KF5RFLcZIuCr",
+      "projectId": "p5XfddSgn6LHSg78",
+      "project": {
+        "updatedAt": "2026-03-14T03:33:01.850Z",
+        "createdAt": "2026-03-14T03:29:42.397Z",
+        "id": "p5XfddSgn6LHSg78",
+        "name": "matias rodriguez <agentcore.ia@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "6704710c-953e-4637-8393-b7e996be2b7a"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": null
+}
