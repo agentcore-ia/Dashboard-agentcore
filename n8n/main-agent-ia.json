@@ -371,7 +371,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/chat/getBase64FromMediaMessage/agentcore test",
+        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/chat/getBase64FromMediaMessage/agentcore",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -439,7 +439,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/chat/getBase64FromMediaMessage/agentcore test",
+        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/chat/getBase64FromMediaMessage/agentcore",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1034,7 +1034,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1075,7 +1075,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1116,7 +1116,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1157,7 +1157,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1198,7 +1198,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+        "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1484,7 +1484,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+        "url": "https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -1819,7 +1819,7 @@
     },
     {
       "parameters": {
-        "jsCode": "\nconst EVOLUTION_URL = \"https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test\";\nconst EVOLUTION_KEY = \"465E65D048F8-42B4-B162-4CF3107E70D8\";\n\nconst remoteJid = $node[\"WhatsApp Trigger\"].json.body.data.key.remoteJid;\nconst resp = $node[\"Dividir mensaje\"].json.output.response;\n\nconst parts = [resp.part_2, resp.part_3, resp.part_4]\n  .filter(p => p && p.trim().length > 0);\n\nfor (const text of parts) {\n  await $helpers.httpRequest({\n    method: \"POST\",\n    url: EVOLUTION_URL,\n    headers: { \"apikey\": EVOLUTION_KEY },\n    body: { number: remoteJid, text },\n    json: true\n  });\n}\n\nreturn [{ json: { sent: parts.length + 1 } }];\n"
+        "jsCode": "\nconst EVOLUTION_URL = \"https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore\";\nconst EVOLUTION_KEY = \"465E65D048F8-42B4-B162-4CF3107E70D8\";\n\nconst remoteJid = $node[\"WhatsApp Trigger\"].json.body.data.key.remoteJid;\nconst resp = $node[\"Dividir mensaje\"].json.output.response;\n\nconst parts = [resp.part_2, resp.part_3, resp.part_4]\n  .filter(p => p && p.trim().length > 0);\n\nfor (const text of parts) {\n  await $helpers.httpRequest({\n    method: \"POST\",\n    url: EVOLUTION_URL,\n    headers: { \"apikey\": EVOLUTION_KEY },\n    body: { number: remoteJid, text },\n    json: true\n  });\n}\n\nreturn [{ json: { sent: parts.length + 1 } }];\n"
       },
       "name": "Send Remaining Parts",
       "type": "n8n-nodes-base.code",
@@ -2918,7 +2918,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/chat/getBase64FromMediaMessage/agentcore test",
+          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/chat/getBase64FromMediaMessage/agentcore",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -2986,7 +2986,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/chat/getBase64FromMediaMessage/agentcore test",
+          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/chat/getBase64FromMediaMessage/agentcore",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -3581,7 +3581,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -3622,7 +3622,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -3663,7 +3663,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -3704,7 +3704,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -3745,7 +3745,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+          "url": "=https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -4031,7 +4031,7 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test",
+          "url": "https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore",
           "sendHeaders": true,
           "headerParameters": {
             "parameters": [
@@ -4366,7 +4366,7 @@
       },
       {
         "parameters": {
-          "jsCode": "\nconst EVOLUTION_URL = \"https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore%20test\";\nconst EVOLUTION_KEY = \"465E65D048F8-42B4-B162-4CF3107E70D8\";\n\nconst remoteJid = $node[\"WhatsApp Trigger\"].json.body.data.key.remoteJid;\nconst resp = $node[\"Dividir mensaje\"].json.output.response;\n\nconst parts = [resp.part_2, resp.part_3, resp.part_4]\n  .filter(p => p && p.trim().length > 0);\n\nfor (const text of parts) {\n  await $helpers.httpRequest({\n    method: \"POST\",\n    url: EVOLUTION_URL,\n    headers: { \"apikey\": EVOLUTION_KEY },\n    body: { number: remoteJid, text },\n    json: true\n  });\n}\n\nreturn [{ json: { sent: parts.length + 1 } }];\n"
+          "jsCode": "\nconst EVOLUTION_URL = \"https://agentcore-evolution-api.8zp1cp.easypanel.host/message/sendText/agentcore\";\nconst EVOLUTION_KEY = \"465E65D048F8-42B4-B162-4CF3107E70D8\";\n\nconst remoteJid = $node[\"WhatsApp Trigger\"].json.body.data.key.remoteJid;\nconst resp = $node[\"Dividir mensaje\"].json.output.response;\n\nconst parts = [resp.part_2, resp.part_3, resp.part_4]\n  .filter(p => p && p.trim().length > 0);\n\nfor (const text of parts) {\n  await $helpers.httpRequest({\n    method: \"POST\",\n    url: EVOLUTION_URL,\n    headers: { \"apikey\": EVOLUTION_KEY },\n    body: { number: remoteJid, text },\n    json: true\n  });\n}\n\nreturn [{ json: { sent: parts.length + 1 } }];\n"
         },
         "name": "Send Remaining Parts",
         "type": "n8n-nodes-base.code",
