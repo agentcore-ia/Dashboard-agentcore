@@ -51,6 +51,11 @@ function getInitial(name: string) {
   return name ? name[0].toUpperCase() : "?";
 }
 
+/** Strip WhatsApp JID suffix: "5491123456789@s.whatsapp.net" → "5491123456789" */
+function cleanPhone(raw: string): string {
+  return raw.split("@")[0].replace(/\D/g, "");
+}
+
 const AVATAR_COLORS = ["#f97316","#ef4444","#3b82f6","#8b5cf6","#14b8a6","#f59e0b","#ec4899"];
 const RESTAURANT_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -154,21 +159,46 @@ export default function ConversasPage() {
         .eq('sender', 'customer')
         .eq('read', false);
 
+      // ──────────────────────────────────────────────────────────────────────
       // Fetch Order history for customer profile
-      if (selected?.cliente_id) {
-        const { data: ordersData, error: ordersError } = await supabase
-          .from('pedidos')
-          .select('id, order_number, total, status, notes, created_at')
-          .eq('cliente_id', selected.cliente_id)
-          .order('created_at', { ascending: false });
-        
-        if (ordersError) {
-          console.error("Error fetching orders for customer:", ordersError);
-        } else {
-          setCustomerOrders(ordersData || []);
-          const totalSpent = (ordersData || []).reduce((sum, order) => sum + Number(order.total || 0), 0);
-          setCustomerTotalSpent(totalSpent);
-        }
+      //
+      // Strategy: query by BOTH cliente_id AND customer_phone (cleaned).
+      // This handles:
+      //   1. Orders linked via cliente_id FK
+      //   2. Orders created by the WA bot that only store the raw/cleaned phone
+      //   3. Phones stored as JID "549...@s.whatsapp.net" in clientes table
+      // ──────────────────────────────────────────────────────────────────────
+      const phoneClean = cleanPhone(selected.customer_phone);
+
+      // Build OR filter: match by cliente_id OR by cleaned customer_phone
+      let ordersQuery = supabase
+        .from('pedidos')
+        .select('id, order_number, total, status, notes, created_at')
+        .order('created_at', { ascending: false });
+
+      if (selected.cliente_id && phoneClean) {
+        ordersQuery = ordersQuery.or(
+          `cliente_id.eq.${selected.cliente_id},customer_phone.ilike.%${phoneClean}%`
+        );
+      } else if (selected.cliente_id) {
+        ordersQuery = ordersQuery.eq('cliente_id', selected.cliente_id);
+      } else if (phoneClean) {
+        ordersQuery = ordersQuery.ilike('customer_phone', `%${phoneClean}%`);
+      }
+
+      const { data: ordersData, error: ordersError } = await ordersQuery;
+
+      if (ordersError) {
+        console.error("Error fetching orders for customer:", ordersError);
+        setCustomerOrders([]);
+        setCustomerTotalSpent(0);
+      } else {
+        // De-duplicate in case both conditions matched the same row
+        const unique = (ordersData || []).filter(
+          (o, idx, arr) => arr.findIndex(x => x.id === o.id) === idx
+        );
+        setCustomerOrders(unique);
+        setCustomerTotalSpent(unique.reduce((sum, o) => sum + Number(o.total || 0), 0));
       }
     }
 
@@ -242,7 +272,6 @@ export default function ConversasPage() {
     const content = input.trim();
     setInput("");
 
-    // Invoke the send-whatsapp-message Edge Function
     const { data, error } = await supabase.functions.invoke('send-whatsapp-message', {
       body: {
         conversacion_id: selected.id,
@@ -253,7 +282,6 @@ export default function ConversasPage() {
 
     if (error) {
       console.error('Error sending message:', error);
-      // Fallback
       await supabase.from('mensajes').insert({
         conversacion_id: selected.id,
         content,
@@ -286,7 +314,6 @@ export default function ConversasPage() {
 
   const handleSelectConv = (conv: Conversation) => {
     setSelected(conv);
-    // Reset unread count
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
   };
 
@@ -316,8 +343,6 @@ export default function ConversasPage() {
           ) : (
             filteredConvs.map((conv, i) => {
               const isSelected = selected?.id === conv.id;
-              
-              // Calculate status tags
               const hasUnread = conv.unread_count > 0;
               let statusTag = '';
               let statusClass = '';
@@ -381,12 +406,12 @@ export default function ConversasPage() {
                   <h2 className="font-headline font-extrabold text-stone-900 leading-tight">{selected.customer_name}</h2>
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                    <span className="text-xs font-bold text-stone-400">{selected.customer_phone} • WhatsApp</span>
+                    {/* Show cleaned phone, not the JID */}
+                    <span className="text-xs font-bold text-stone-400">+{cleanPhone(selected.customer_phone)} • WhatsApp</span>
                   </div>
                 </div>
               </div>
 
-              {/* Botones Accionables IA */}
               <div className="flex items-center gap-3">
                 <div className={`px-4 py-2 ${aiActive ? 'bg-primary-fixed' : 'bg-surface-container-high'} rounded-full flex items-center gap-2 transition-colors`}>
                   <span className={`material-symbols-outlined text-sm ${aiActive ? 'text-primary' : 'text-stone-400'}`} style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -529,7 +554,8 @@ export default function ConversasPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="font-bold text-stone-800 truncate">{selected.customer_name}</p>
-                  <p className="text-xs text-stone-500 truncate">{selected.customer_phone}</p>
+                  {/* Show the clean phone number */}
+                  <p className="text-xs text-stone-500 truncate">+{cleanPhone(selected.customer_phone)}</p>
                 </div>
               </div>
               
