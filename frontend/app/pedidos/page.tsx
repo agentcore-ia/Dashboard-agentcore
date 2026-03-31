@@ -51,19 +51,19 @@ function TranscriptionModal({ order, onClose }: { order: Order; onClose: () => v
             <p className="text-stone-400 text-sm py-4 italic line-clamp-3">No hay transcripción guardada.</p>
           ) : (
             transcript.map((msg, i) => (
-              <div key={i} className={`flex gap-3 ${msg.role === 'assistant' ? 'flex-row' : 'flex-row-reverse'}`}>
+              <div key={i} className={`flex gap-3 ${msg.role === 'agent' ? 'flex-row' : 'flex-row-reverse'}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
-                  msg.role === 'assistant' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'
+                  msg.role === 'agent' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'
                 }`}>
-                  {msg.role === 'assistant' ? '🤖' : '👤'}
+                  {msg.role === 'agent' ? '🤖' : '👤'}
                 </div>
                 <div className={`rounded-2xl px-4 py-2 text-sm max-w-[80%] shadow-sm ${
-                  msg.role === 'assistant'
+                  msg.role === 'agent'
                     ? 'bg-stone-50 text-stone-700 border border-stone-100 rounded-tl-sm'
                     : 'bg-orange-600 text-white rounded-tr-sm'
                 }`}>
                   <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5 opacity-60">
-                    {msg.role === 'assistant' ? 'Agente AI' : 'Cliente'}
+                    {msg.role === 'agent' ? 'Agente AI' : 'Cliente'}
                   </p>
                   {msg.mensaje}
                 </div>
@@ -121,7 +121,7 @@ function OrderCard({ order, onAdvance }: { order: Order; onAdvance: (id: string,
             <span className="material-symbols-outlined text-sm">{isCall ? 'call' : (order.customer_phone ? 'chat' : 'storefront')}</span>
             <span className="text-xs font-semibold flex items-center gap-2">
               {pickup ? 'Retiro' : 'Delivery'} • {isCall ? 'Llamada' : (order.customer_phone ? 'WhatsApp' : 'Local')} • #{order.order_number}
-              {order.customer_phone && (
+              {!isCall && order.customer_phone && (
                 <a 
                   href={`https://wa.me/${order.customer_phone.replace(/[^0-9]/g, '')}`} 
                   target="_blank" 
