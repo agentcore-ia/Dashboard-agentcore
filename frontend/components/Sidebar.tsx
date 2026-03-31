@@ -5,12 +5,11 @@ import { usePathname } from "next/navigation";
 import Image from "next/image";
 
 const navItems = [
-  { href: "/", label: "Inicio", icon: "dashboard" },
+  { href: "/", label: "Inicio", icon: "home" },
   { href: "/conversaciones", label: "Chats", icon: "chat" },
   { href: "/pedidos", label: "Pedidos", icon: "restaurant_menu" },
-  { href: "/menu", label: "Menú", icon: "menu_book" },
   { href: "/analytics", label: "Analíticas", icon: "analytics" },
-  { href: "/modulos", label: "Módulos", icon: "extension" },
+  { href: "/modulos", label: "Módulos", icon: "smart_toy" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
 ];
 
@@ -26,13 +25,20 @@ export default function Sidebar({ isOpen, onClose }: { isOpen?: boolean; onClose
         style={{ width: "var(--sidebar-width)", minWidth: "var(--sidebar-width)" }}
       >
         {/* Logo Section */}
-        <div className="flex items-center gap-3 mb-8 px-6">
-          <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shrink-0">
-            <span className="material-symbols-outlined fill-icon">restaurant</span>
+        <div className="px-6 mb-10 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-500 overflow-hidden flex items-center justify-center shrink-0">
+             <Image 
+                src="/logo.png" 
+                alt="Order Pilot Logo" 
+                width={40} 
+                height={40}
+                className="object-cover w-full h-full"
+             />
           </div>
           <div>
-            <h1 className="font-headline font-black text-[#ad2c00] text-xl leading-none">AgentCore</h1>
-            <p className="text-[10px] uppercase tracking-widest text-stone-500 font-bold mt-1 leading-none">Culinary Concierge</p>
+            <h1 className="text-2xl font-black text-orange-900 tracking-tight leading-none font-headline">
+              Order Pilot
+            </h1>
           </div>
         </div>
 

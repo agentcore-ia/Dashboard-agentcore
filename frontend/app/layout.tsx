@@ -49,7 +49,7 @@ export default function RootLayout({
                 <Menu className="w-6 h-6" />
               </button>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-[#ad2c00] tracking-tight leading-none text-lg">AgentCore</span>
+                <span className="font-bold text-orange-900 tracking-tight leading-none text-lg">Order Pilot</span>
               </div>
             </header>
 
