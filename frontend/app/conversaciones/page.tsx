@@ -168,7 +168,7 @@ export default function ConversasPage() {
       //   2. Orders created by the WA bot that only store the raw/cleaned phone
       //   3. Phones stored as JID "549...@s.whatsapp.net" in clientes table
       // ──────────────────────────────────────────────────────────────────────
-      const phoneClean = cleanPhone(selected.customer_phone);
+      const phoneClean = cleanPhone(selected!.customer_phone);
 
       // Build OR filter: match by cliente_id OR by cleaned customer_phone
       let ordersQuery = supabase
@@ -176,12 +176,12 @@ export default function ConversasPage() {
         .select('id, order_number, total, status, notes, created_at')
         .order('created_at', { ascending: false });
 
-      if (selected.cliente_id && phoneClean) {
+      if (selected!.cliente_id && phoneClean) {
         ordersQuery = ordersQuery.or(
-          `cliente_id.eq.${selected.cliente_id},customer_phone.ilike.%${phoneClean}%`
+          `cliente_id.eq.${selected!.cliente_id},customer_phone.ilike.%${phoneClean}%`
         );
-      } else if (selected.cliente_id) {
-        ordersQuery = ordersQuery.eq('cliente_id', selected.cliente_id);
+      } else if (selected!.cliente_id) {
+        ordersQuery = ordersQuery.eq('cliente_id', selected!.cliente_id);
       } else if (phoneClean) {
         ordersQuery = ordersQuery.ilike('customer_phone', `%${phoneClean}%`);
       }
