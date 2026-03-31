@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 type OrderStatus = "new" | "preparing" | "ready" | "delivering" | "delivered" | "cancelled";
 
 interface TranscriptionItem { role: string; mensaje: string; }
+interface OrderItem { name: string; price: number; quantity: number; notes?: string; }
 interface Order {
   id: string; order_number: number; status: OrderStatus;
   customer_name: string; customer_phone: string; delivery_type: string;
