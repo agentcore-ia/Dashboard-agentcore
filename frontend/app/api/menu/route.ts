@@ -72,10 +72,10 @@ export async function GET() {
         const rows = parseCSV(csvText);
         const menu = rows.map(row => ({
             producto: row['Producto'] || '',
-            tipo: row['Tipo'] || 'Otro',
-            disponible: row['Disponible'] || 'No',
+            tipo: row['Categoria'] || row['Tipo'] || 'Otro',
+            disponible: row['Disponibilidad'] || row['Disponible'] || 'No',
             precio: row['Precio'] || '0',
-            ingredientes: row['Ingredientes'] || '',
+            ingredientes: row['Descripción'] || row['Ingredientes'] || '',
             aliases: row['Aliases'] || '',
         }));
         return NextResponse.json(menu);
@@ -160,7 +160,7 @@ export async function PATCH(request: NextRequest) {
         const row = rows.find((r: any) => safeGet(r, 'Producto').trim() === producto.trim());
         if (!row) return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
 
-        row.set('Disponible', disponible);
+        row.set('Disponibilidad', disponible);
         await row.save();
         return NextResponse.json({ success: true });
     } catch (err: any) {
