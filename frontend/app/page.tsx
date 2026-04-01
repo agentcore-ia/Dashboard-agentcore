@@ -4,7 +4,7 @@ import Image from "next/image";
 
 export default function DashboardInicio() {
   return (
-    <>
+    <div className="mx-auto max-w-7xl px-4 sm:px-8 pt-8 pb-12">
       {/* Hero Heading */}
       <div className="mb-10">
         <h2 className="text-4xl font-extrabold text-orange-900 tracking-tight mb-2 font-headline">
@@ -269,6 +269,6 @@ export default function DashboardInicio() {
         </div>
 
       </div>
-    </>
+    </div>
   );
 }
