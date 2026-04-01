@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Search, Bot, User, Send, Paperclip, MoreVertical, ArrowLeft } from "lucide-react";
+import { Search, Bot, User, Send, Paperclip, ArrowLeft, UserCircle, X, Package } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
 interface Conversation {
@@ -13,7 +13,8 @@ interface Conversation {
   ai_active: boolean;
   status: string;
   unread_count: number;
-  source?: string;
+  source: string;
+  customer_id?: string;
 }
 
 interface Message {
@@ -69,6 +70,8 @@ export default function ConversasPage() {
   const [aiActive, setAiActive] = useState(true);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [loading, setLoading] = useState(true);
+  const [showProfile, setShowProfile] = useState(false);
+  const [customerOrders, setCustomerOrders] = useState<any[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,7 +79,7 @@ export default function ConversasPage() {
       setLoading(true);
       const { data: convs, error } = await supabase
         .from('conversaciones')
-        .select(`id, status, ai_active, last_message_at, created_at, source, clientes!inner(name, phone)`)
+        .select(`id, status, ai_active, last_message_at, created_at, source, cliente_id, clientes!inner(id, name, phone)`)
         .eq('restaurant_id', RESTAURANT_ID)
         .order('last_message_at', { ascending: false });
 
@@ -88,17 +91,22 @@ export default function ConversasPage() {
           const { count } = await supabase.from('mensajes').select('*', { count: 'exact', head: true }).eq('conversacion_id', c.id).eq('read', false).eq('sender', 'customer');
           const cliente = Array.isArray(c.clientes) ? c.clientes[0] : c.clientes;
           const phoneStr = cliente?.phone || '';
-          const isInstagram = c.source === 'instagram' || phoneStr.replace(/\D/g, '').length >= 15;
+          // Determine source: use DB field first, then fall back to phone length heuristic
+          let source = c.source || '';
+          if (!source || source === 'unknown') {
+            source = phoneStr.replace(/\D/g, '').length >= 15 ? 'instagram' : 'whatsapp';
+          }
           return {
             id: c.id,
             customer_name: cliente?.name || 'Sin nombre',
             customer_phone: phoneStr,
+            customer_id: cliente?.id || c.cliente_id || null,
             last_message: lastMsg?.content || null,
             last_message_at: c.last_message_at,
             ai_active: c.ai_active,
             status: c.status,
             unread_count: count || 0,
-            source: isInstagram ? 'instagram' : 'whatsapp',
+            source,
           };
         })
       );
@@ -167,7 +175,20 @@ export default function ConversasPage() {
   const handleSelectConv = (conv: Conversation) => {
     setSelected(conv);
     setMobileView("chat");
+    setShowProfile(false);
     setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, unread_count: 0 } : c));
+  };
+
+  const handleShowProfile = async () => {
+    setShowProfile(p => !p);
+    if (!selected?.customer_id) return;
+    const { data } = await supabase
+      .from('pedidos')
+      .select('id, order_number, status, total, created_at, notes')
+      .eq('cliente_id', selected.customer_id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    setCustomerOrders(data || []);
   };
 
   return (
@@ -251,7 +272,7 @@ export default function ConversasPage() {
           </div>
 
           {/* Right: Chat window */}
-          <div className={`flex-1 flex flex-col ${mobileView === "list" ? "hidden lg:flex" : "flex"}`}>
+          <div className={`flex-1 flex flex-col relative ${mobileView === "list" ? "hidden lg:flex" : "flex"}`}>
             {selected ? (
               <>
                 {/* Chat header */}
@@ -269,26 +290,95 @@ export default function ConversasPage() {
                         {selected.source === 'instagram' ? (
                           <><IGIcon size={10} /><span className="text-[10px] text-stone-500">Instagram</span></>
                         ) : (
-                          <><WAIcon size={10} /><span className="text-[10px] text-stone-500">{selected.customer_phone}</span></>
+                          <><WAIcon size={10} /><span className="text-[10px] text-stone-500">WhatsApp{selected.customer_phone ? ` · ${selected.customer_phone}` : ''}</span></>
                         )}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={handleShowProfile}
+                      className={`p-1.5 rounded-lg transition-all ${showProfile ? 'bg-orange-100 text-orange-600' : 'text-stone-400 hover:text-stone-700 hover:bg-stone-100'}`}
+                      title="Ver perfil del cliente"
+                    >
+                      <UserCircle className="w-5 h-5" />
+                    </button>
+                    <button
                       onClick={toggleAI}
                       className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all ${aiActive ? "bg-blue-100 text-blue-700 hover:bg-blue-200" : "bg-green-100 text-green-700 hover:bg-green-200"}`}
                     >
                       {aiActive ? "Tomar Control" : "Volver a IA"}
                     </button>
-                    <button className="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100">
-                      <MoreVertical className="w-4 h-4" />
-                    </button>
+
+
                   </div>
                 </div>
 
+                {/* Customer Profile Panel (slide in from right, overlays messages) */}
+                {showProfile && (
+                  <div className="absolute inset-y-0 right-0 w-72 bg-white border-l border-stone-100 z-10 flex flex-col shadow-xl overflow-y-auto">
+                    <div className="flex items-center justify-between px-4 py-3.5 border-b border-stone-100">
+                      <span className="font-semibold text-sm text-stone-800">Perfil del cliente</span>
+                      <button onClick={() => setShowProfile(false)} className="p-1 rounded-lg hover:bg-stone-100 text-stone-400">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="p-4">
+                      {/* Avatar + info */}
+                      <div className="flex flex-col items-center text-center mb-5 pb-5 border-b border-stone-100">
+                        <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold mb-3" style={{ background: "#f9731622", color: "#fb923c" }}>
+                          {getInitial(selected.customer_name)}
+                        </div>
+                        <p className="font-bold text-stone-800 text-sm">{selected.customer_name}</p>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          {selected.source === 'instagram' ? (
+                            <><IGIcon size={11} /><span className="text-[11px] text-stone-500">Instagram</span></>
+                          ) : (
+                            <><WAIcon size={11} /><span className="text-[11px] text-stone-500">WhatsApp</span></>
+                          )}
+                        </div>
+                        {selected.customer_phone && selected.source !== 'instagram' && (
+                          <p className="text-[11px] text-stone-400 mt-0.5">{selected.customer_phone}</p>
+                        )}
+                      </div>
+
+                      {/* Order history */}
+                      <div>
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-stone-400 mb-3">Historial de pedidos</h4>
+                        {customerOrders.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-8 text-stone-300">
+                            <Package className="w-8 h-8 mb-2" />
+                            <p className="text-xs text-stone-400">Sin pedidos registrados</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {customerOrders.map(order => (
+                              <div key={order.id} className="bg-stone-50 rounded-xl p-3 border border-stone-100">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-bold text-stone-700">#{order.order_number}</span>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${
+                                    order.status === 'delivered' ? 'bg-green-100 text-green-700'
+                                    : order.status === 'new' ? 'bg-red-100 text-red-600'
+                                    : order.status === 'preparing' ? 'bg-orange-100 text-orange-700'
+                                    : 'bg-blue-100 text-blue-700'
+                                  }`}>{order.status}</span>
+                                </div>
+                                {order.notes && <p className="text-[11px] text-stone-500 truncate">{order.notes}</p>}
+                                <div className="flex items-center justify-between mt-1.5">
+                                  <span className="text-[11px] font-bold text-stone-800">${Number(order.total).toFixed(2)}</span>
+                                  <span className="text-[10px] text-stone-400">{new Date(order.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Messages */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-stone-50">
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 bg-stone-50 relative">
                   {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                       <p className="text-sm text-stone-400">No hay mensajes aún</p>
