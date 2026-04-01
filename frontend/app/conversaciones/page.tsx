@@ -91,10 +91,18 @@ export default function ConversasPage() {
           const { count } = await supabase.from('mensajes').select('*', { count: 'exact', head: true }).eq('conversacion_id', c.id).eq('read', false).eq('sender', 'customer');
           const cliente = Array.isArray(c.clientes) ? c.clientes[0] : c.clientes;
           const phoneStr = cliente?.phone || '';
-          // Determine source: use DB field first, then fall back to phone length heuristic
-          let source = c.source || '';
-          if (!source || source === 'unknown') {
-            source = phoneStr.replace(/\D/g, '').length >= 15 ? 'instagram' : 'whatsapp';
+          // Reliable source detection based on phone format:
+          // - WhatsApp: contains @s.whatsapp.net OR is a standard phone number ≤13 digits
+          // - Instagram: pure numeric ID ≥15 digits (no @ symbol)
+          let source: string;
+          if (phoneStr.includes('@s.whatsapp.net')) {
+            source = 'whatsapp';
+          } else if (/^\d{15,}$/.test(phoneStr.replace(/\D/g, '')) && !phoneStr.includes('@')) {
+            source = 'instagram';
+          } else if (c.source === 'instagram' && !phoneStr.includes('@')) {
+            source = 'instagram';
+          } else {
+            source = 'whatsapp';
           }
           return {
             id: c.id,
