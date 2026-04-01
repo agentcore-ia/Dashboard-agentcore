@@ -103,10 +103,10 @@ export async function POST(request: NextRequest) {
         const price = parseFloat(String(data.precio).replace(/[^0-9.]/g, '')) || 0;
         await sheet.addRow({
             'Producto': data.producto.trim(),
-            'Tipo': data.tipo || 'Otro',
-            'Disponible': data.disponible || 'Sí',
+            'Categoria': data.tipo || 'Otro',
+            'Disponibilidad': data.disponible || 'Sí',
             'Precio': price,
-            'Ingredientes': data.ingredientes || '',
+            'Descripción': data.ingredientes || '',
         });
         return NextResponse.json({ success: true, data: { Producto: data.producto.trim(), Tipo: data.tipo || 'Otro', Disponible: data.disponible || 'Sí', Precio: price, Ingredientes: data.ingredientes || '', Aliases: data.aliases || '' } }, { status: 201 });
     } catch (err: any) {
@@ -132,10 +132,10 @@ export async function PUT(request: NextRequest) {
 
         const price = parseFloat(String(data.precio).replace(/[^0-9.]/g, '')) || 0;
         row.set('Producto', (data.producto || originalName).trim());
-        try { row.set('Tipo', data.tipo || 'Otro'); } catch {}
-        try { row.set('Disponible', data.disponible || 'Sí'); } catch {}
+        try { row.set('Categoria', data.tipo || 'Otro'); } catch {}
+        try { row.set('Disponibilidad', data.disponible || 'Sí'); } catch {}
         try { row.set('Precio', price); } catch {}
-        try { row.set('Ingredientes', data.ingredientes || ''); } catch {}
+        try { row.set('Descripción', data.ingredientes || ''); } catch {}
         try { row.set('Aliases', data.aliases || ''); } catch {}
         await row.save();
         return NextResponse.json({ success: true, data: { Producto: (data.producto || originalName).trim(), Tipo: data.tipo || 'Otro', Disponible: data.disponible || 'Sí', Precio: price, Ingredientes: data.ingredientes || '', Aliases: data.aliases || '' } });
