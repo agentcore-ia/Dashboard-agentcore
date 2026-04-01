@@ -99,17 +99,22 @@ export default function ConversasPage() {
           let source: string;
           if (phoneStr.includes('@s.whatsapp.net')) {
             source = 'whatsapp';
-          } else if (/^\d{15,}$/.test(phoneStr.replace(/\D/g, '')) && !phoneStr.includes('@')) {
+          } else if (/^\d{15,}$/.test(phoneStr.replace(/\\D/g, '')) && !phoneStr.includes('@')) {
             source = 'instagram';
           } else if (c.source === 'instagram' && !phoneStr.includes('@')) {
             source = 'instagram';
           } else {
             source = 'whatsapp';
           }
+          
+          const cleanPhone = phoneStr.includes('@s.whatsapp.net') 
+            ? phoneStr.replace('@s.whatsapp.net', '') 
+            : phoneStr;
+
           return {
             id: c.id,
             customer_name: cliente?.name || 'Sin nombre',
-            customer_phone: phoneStr,
+            customer_phone: cleanPhone,
             customer_id: cliente?.id || c.cliente_id || null,
             last_message: lastMsg?.content || null,
             last_message_at: c.last_message_at,
@@ -308,9 +313,9 @@ export default function ConversasPage() {
                       <p className="font-semibold text-sm text-stone-800">{selected.customer_name}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {selected.source === 'instagram' ? (
-                          <><IGIcon size={10} /><span className="text-[10px] text-stone-500">Instagram</span></>
+                          <><IGIcon size={12} /><span className="text-xs text-stone-500 font-medium">Instagram</span></>
                         ) : (
-                          <><WAIcon size={10} /><span className="text-[10px] text-stone-500">WhatsApp{selected.customer_phone ? ` · ${selected.customer_phone}` : ''}</span></>
+                          <><WAIcon size={12} /><span className="text-xs text-stone-500 font-medium">WhatsApp{selected.customer_phone ? ` · ${selected.customer_phone}` : ''}</span></>
                         )}
                       </div>
                     </div>
@@ -358,7 +363,7 @@ export default function ConversasPage() {
                           )}
                         </div>
                         {selected.customer_phone && selected.source !== 'instagram' && (
-                          <p className="text-[11px] text-stone-400 mt-0.5">{selected.customer_phone}</p>
+                          <p className="text-sm font-medium text-stone-500 mt-1">{selected.customer_phone}</p>
                         )}
                       </div>
 
