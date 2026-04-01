@@ -94,16 +94,19 @@ export default function ConversasPage() {
 
           const cliente = Array.isArray(c.clientes) ? c.clientes[0] : c.clientes;
 
+          const phoneStr = cliente?.phone || '';
+          const isInstagram = c.source === 'instagram' || phoneStr.replace(/\D/g, '').length >= 15;
+
           return {
             id: c.id,
             customer_name: cliente?.name || 'Sin nombre',
-            customer_phone: cliente?.phone || '',
+            customer_phone: phoneStr,
             last_message: lastMsg?.content || null,
             last_message_at: c.last_message_at,
             ai_active: c.ai_active,
             status: c.status,
             unread_count: count || 0,
-            source: c.source || 'whatsapp',
+            source: isInstagram ? 'instagram' : 'whatsapp',
           };
         })
       );
