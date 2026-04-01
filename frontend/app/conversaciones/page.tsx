@@ -67,12 +67,14 @@ export default function ConversasPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
-  const [aiActive, setAiActive] = useState(true);
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
   const [loading, setLoading] = useState(true);
   const [showProfile, setShowProfile] = useState(false);
   const [customerOrders, setCustomerOrders] = useState<any[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // aiActive is always derived from selected conversation — single source of truth
+  const aiActive = selected?.ai_active ?? true;
 
   useEffect(() => {
     async function fetchConversations() {
@@ -127,17 +129,18 @@ export default function ConversasPage() {
 
   useEffect(() => {
     if (!selected) return;
-    setAiActive(selected.ai_active);
     async function fetchMessages() {
       const { data } = await supabase.from('mensajes').select('*').eq('conversacion_id', selected!.id).order('created_at', { ascending: true });
       setMessages(data || []);
       await supabase.from('mensajes').update({ read: true }).eq('conversacion_id', selected!.id).eq('sender', 'customer').eq('read', false);
     }
     fetchMessages();
-  }, [selected]);
+  }, [selected?.id]);
 
   useEffect(() => {
-    const channel = supabase.channel('realtime-mensajes')
+    // Use unique channel name per selected conversation to avoid conflicts
+    const channelName = `realtime-conv-${selected?.id ?? 'global'}`;
+    const channel = supabase.channel(channelName)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensajes' }, (payload) => {
         const newMsg = payload.new as Message;
         if (selected && newMsg.conversacion_id === selected.id) {
@@ -148,11 +151,13 @@ export default function ConversasPage() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversaciones' }, (payload) => {
         const updated = payload.new as any;
         setConversations(prev => prev.map(c => c.id === updated.id ? { ...c, ai_active: updated.ai_active, status: updated.status } : c));
-        if (selected && selected.id === updated.id) { setAiActive(updated.ai_active); setSelected(prev => prev ? { ...prev, ai_active: updated.ai_active } : prev); }
+        if (selected && selected.id === updated.id) {
+          setSelected(prev => prev ? { ...prev, ai_active: updated.ai_active } : prev);
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [selected]);
+  }, [selected?.id]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
@@ -173,11 +178,18 @@ export default function ConversasPage() {
 
   const toggleAI = async () => {
     if (!selected) return;
-    const newVal = !aiActive;
-    setAiActive(newVal);
-    await supabase.from('conversaciones').update({ ai_active: newVal }).eq('id', selected.id);
-    setConversations(c => c.map(x => x.id === selected.id ? { ...x, ai_active: newVal } : x));
+    const newVal = !selected.ai_active;   // read from source of truth, not stale local state
+    // Optimistic update: update selected and conversations immediately
     setSelected(prev => prev ? { ...prev, ai_active: newVal } : prev);
+    setConversations(c => c.map(x => x.id === selected.id ? { ...x, ai_active: newVal } : x));
+    // Persist to DB
+    const { error } = await supabase.from('conversaciones').update({ ai_active: newVal }).eq('id', selected.id);
+    if (error) {
+      // Rollback on error
+      console.error('Error toggling AI:', error);
+      setSelected(prev => prev ? { ...prev, ai_active: !newVal } : prev);
+      setConversations(c => c.map(x => x.id === selected.id ? { ...x, ai_active: !newVal } : x));
+    }
   };
 
   const handleSelectConv = (conv: Conversation) => {
