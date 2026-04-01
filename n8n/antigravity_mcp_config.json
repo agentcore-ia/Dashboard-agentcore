@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "n8n-mcp-server": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "supergateway",
+        "--streamableHttp",
+        "https://agentcore-n8n.8zp1cp.easypanel.host/mcp-server/http",
+        "--header",
+        "authorization:Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NzA0NzEwYy05NTNlLTQ2MzctODM5My1iN2U5OTZiZTJiN2EiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6IjkzMDc3MDY0LWQ5ODQtNDEyZi05Njg5LThmMWRjMDY4MTQxNSIsImlhdCI6MTc3Mzc3OTAzMH0.2nX-ZwFZx7_WC0syyj3nkHiVZyb_wTl8f4a8uUwM8ao"
+      ]
+    }
+  }
+}

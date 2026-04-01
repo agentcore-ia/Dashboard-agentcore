@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleSpreadsheet } from 'google-spreadsheet';
 import { JWT } from 'google-auth-library';
 
+export const dynamic = 'force-dynamic';
+
 // ── Configuration ────────────────────────────────────────
 const SHEET_ID = '1WUQRUqR-u8FLENLJUuxpNepQ3eezlaw6yo8CI0fVYq4';
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
@@ -61,6 +63,19 @@ async function getAuthDoc(): Promise<GoogleSpreadsheet> {
     return doc;
 }
 
+function safeSetHeaders(row: any, headersList: string[][], dataMap: Record<string, any>) {
+    headersList.forEach(headers => {
+        for (const h of headers) {
+            try {
+                if (dataMap[headers[0]] !== undefined) {
+                    row.set(h, dataMap[headers[0]]);
+                    break;
+                }
+            } catch (e) {}
+        }
+    });
+}
+
 // ═════════════════════════════════════════════════════════
 // GET — Read all products (PUBLIC CSV, no auth needed)
 // ═════════════════════════════════════════════════════════
@@ -101,13 +116,16 @@ export async function POST(request: NextRequest) {
         if (exists) return NextResponse.json({ error: 'El producto ya existe' }, { status: 400 });
 
         const price = parseFloat(String(data.precio).replace(/[^0-9.]/g, '')) || 0;
-        await sheet.addRow({
-            'Producto': data.producto.trim(),
-            'Categoria': data.tipo || 'Otro',
-            'Disponibilidad': data.disponible || 'Sí',
-            'Precio': price,
-            'Descripción': data.ingredientes || '',
+        
+        let payload: any = { 'Producto': data.producto.trim() };
+        sheet.headerValues.forEach((h: string) => {
+             if (h === 'Categoria' || h === 'Tipo') payload[h] = data.tipo || 'Otro';
+             if (h === 'Disponibilidad' || h === 'Disponible') payload[h] = data.disponible || 'Sí';
+             if (h === 'Precio') payload[h] = price;
+             if (h === 'Descripción' || h === 'Ingredientes') payload[h] = data.ingredientes || '';
         });
+        
+        await sheet.addRow(payload);
         return NextResponse.json({ success: true, data: { Producto: data.producto.trim(), Tipo: data.tipo || 'Otro', Disponible: data.disponible || 'Sí', Precio: price, Ingredientes: data.ingredientes || '', Aliases: data.aliases || '' } }, { status: 201 });
     } catch (err: any) {
         console.error('POST /api/menu error:', err);
@@ -132,11 +150,9 @@ export async function PUT(request: NextRequest) {
 
         const price = parseFloat(String(data.precio).replace(/[^0-9.]/g, '')) || 0;
         row.set('Producto', (data.producto || originalName).trim());
-        try { row.set('Categoria', data.tipo || 'Otro'); } catch {}
-        try { row.set('Disponibilidad', data.disponible || 'Sí'); } catch {}
-        try { row.set('Precio', price); } catch {}
-        try { row.set('Descripción', data.ingredientes || ''); } catch {}
-        try { row.set('Aliases', data.aliases || ''); } catch {}
+        safeSetHeaders(row, [['Categoria', 'Tipo'], ['Disponibilidad', 'Disponible'], ['Precio'], ['Descripción', 'Ingredientes'], ['Aliases']], 
+            { 'Categoria': data.tipo || 'Otro', 'Disponibilidad': data.disponible || 'Sí', 'Precio': price, 'Descripción': data.ingredientes || '', 'Aliases': data.aliases || '' }
+        );
         await row.save();
         return NextResponse.json({ success: true, data: { Producto: (data.producto || originalName).trim(), Tipo: data.tipo || 'Otro', Disponible: data.disponible || 'Sí', Precio: price, Ingredientes: data.ingredientes || '', Aliases: data.aliases || '' } });
     } catch (err: any) {
@@ -160,7 +176,7 @@ export async function PATCH(request: NextRequest) {
         const row = rows.find((r: any) => safeGet(r, 'Producto').trim() === producto.trim());
         if (!row) return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 });
 
-        row.set('Disponibilidad', disponible);
+        safeSetHeaders(row, [['Disponibilidad', 'Disponible']], { 'Disponibilidad': disponible });
         await row.save();
         return NextResponse.json({ success: true });
     } catch (err: any) {

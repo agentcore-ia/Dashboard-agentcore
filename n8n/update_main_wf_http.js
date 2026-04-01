@@ -1,0 +1,79 @@
+const https = require('https');
+
+const N8N_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2NzA0NzEwYy05NTNlLTQ2MzctODM5My1iN2U5OTZiZTJiN2EiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYjU5NGEzZDEtOTc5ZC00YzYxLTkwZDEtODdhM2YxOWViODMwIiwiaWF0IjoxNzczNzc5MDc5LCJleHAiOjE3ODE0OTYwMDB9.vBqNhO8OUtF_D5NxIOMsKbPTbKmtutcA-7z64mFzuHA";
+const MAIN_WORKFLOW_ID = "Sbf4ewHwOCdsruMv";
+const N8N_PUBLIC_URL = "https://agentcore-n8n.8zp1cp.easypanel.host";
+
+function apiCall(method, path, data) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`https://agentcore-n8n.8zp1cp.easypanel.host/api/v1${path}`);
+    const options = {
+      method,
+      hostname: url.hostname,
+      path: url.pathname,
+      headers: {
+        'X-N8N-API-KEY': N8N_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    };
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch (e) { reject(new Error(body)); }
+      });
+    });
+    req.on('error', reject);
+    if (data) req.write(JSON.stringify(data));
+    req.end();
+  });
+}
+
+async function main() {
+  console.log('1. Fetching Main Workflow...');
+  const mainWf = await apiCall('GET', `/workflows/${MAIN_WORKFLOW_ID}`);
+  
+  const mainOrdenIndex = mainWf.nodes.findIndex(n => n.name === 'Orden');
+  
+  if (mainOrdenIndex >= 0) {
+    const position = mainWf.nodes[mainOrdenIndex].position;
+    
+    // Replace Orden tool in main workflow with a standard httpRequest!
+    mainWf.nodes[mainOrdenIndex] = {
+      "parameters": {
+        "method": "POST",
+        "url": `${N8N_PUBLIC_URL}/webhook/save-order`,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ pedido: $fromAI('pedido'), nombre: $fromAI('nombre'), direccion: $fromAI('direccion'), numero: $('Fields').first().json.From }) }}"
+      },
+      "id": "e31a15ad-e7a6-432e-b0fb-45b4a5451e4d", 
+      "name": "Orden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": position
+    };
+    
+    console.log('2. Updating Main Workflow to use HTTP Request node for Orders...');
+    
+    const payload = {
+        name: mainWf.name,
+        nodes: mainWf.nodes,
+        connections: mainWf.connections,
+        settings: { executionOrder: "v1" }
+    };
+
+    const updateMainRes = await apiCall('PUT', `/workflows/${MAIN_WORKFLOW_ID}`, payload);
+    
+    if (updateMainRes.id) {
+      console.log('   ✅ Main workflow updated to use standard HTTP node as Tool.');
+    } else {
+      console.error('   ❌ Failed to update main workflow:', updateMainRes);
+    }
+  } else {
+    console.log('   ❌ Could not find original Orden tool to replace.');
+  }
+}
+
+main().catch(console.error);

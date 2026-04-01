@@ -1,0 +1,329 @@
+{
+  "updatedAt": "2026-03-25T19:02:08.605Z",
+  "createdAt": "2026-03-20T02:31:09.763Z",
+  "id": "QCVo6a4w9fCAvxRp",
+  "name": "Sync Order SubWorkflow (Webhook)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "save-order",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "cb48aa82-7ea9-42b7-872f-5b76686300cc"
+    },
+    {
+      "id": "post-pedido",
+      "name": "Post Pedido Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://eqnjyygokjinmsfvogxi.supabase.co/rest/v1/pedidos",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbmp5eWdva2ppbm1zZnZvZ3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NzcxMjEsImV4cCI6MjA4OTI1MzEyMX0.BrVsESdtgMBnPjfZfwreg7PWg-HIgiLO5-QoN0qqbkE"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\nnotes: $json.body.pedido || '',\naddress: $json.body.tipo_entrega === 'pickup' ? 'Retiro en local' : ($json.body.direccion || ''),\ndelivery_type: $json.body.tipo_entrega === 'pickup' ? 'pickup' : 'delivery',\ntotal: parseFloat($json.body.total || 0),\nstatus: 'new',\npayment_method: 'cash',\ncustomer_name: $json.body.nombre || '',\ncustomer_phone: $json.body.numero || ''\n}) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "gsheets-node",
+      "name": "Google Sheets Append",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        0
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1rKxYr7mIfE5_D9dNOc8R20VqEEQjmBiXJWBStwMkwDs",
+          "mode": "list",
+          "cachedResultName": "plantilla_pedidos_n8n"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1007445674,
+          "mode": "list",
+          "cachedResultName": "Pedidos"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID Pedido": "{{ Post Pedido Supabase.first().json.id || Post Pedido Supabase.first().json[0]?.id || '' }}",
+            "Nombre del Cliente": "={{ $('Webhook').first().json.body.nombre || '' }}",
+            "Pedido": "={{ $('Webhook').first().json.body.pedido || '' }}",
+            "Precio": "={{ $('Webhook').first().json.body.total || '0' }}",
+            "Direcci├│n": "={{ $('Webhook').first().json.body.tipo_entrega === 'pickup' ? 'Retiro en local' : ($('Webhook').first().json.body.direccion || '') }}",
+            "Tipo": "={{ $('Webhook').first().json.body.tipo_entrega === 'pickup' ? 'Retiro en local' : 'Delivery' }}",
+            "Fecha": "={{ new Date().toLocaleDateString('es-AR') }}",
+            "Hora": "={{ new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) }}",
+            "Estado": "=nuevo",
+            "Notas": "={{ $('Webhook').first().json.body.numero || '' }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "67EM3O1xJzTRvbMN",
+          "name": "Google Sheets account 4"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Post Pedido Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post Pedido Supabase": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets Append",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {},
+  "versionId": "56ee24ad-56b9-41a3-b225-8e1a2d59eae7",
+  "activeVersionId": "56ee24ad-56b9-41a3-b225-8e1a2d59eae7",
+  "versionCounter": 75,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-03-20T02:31:09.785Z",
+      "createdAt": "2026-03-20T02:31:09.785Z",
+      "role": "workflow:owner",
+      "workflowId": "QCVo6a4w9fCAvxRp",
+      "projectId": "p5XfddSgn6LHSg78",
+      "project": {
+        "updatedAt": "2026-03-14T03:33:01.850Z",
+        "createdAt": "2026-03-14T03:29:42.397Z",
+        "id": "p5XfddSgn6LHSg78",
+        "name": "matias rodriguez <agentcore.ia@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "6704710c-953e-4637-8393-b7e996be2b7a"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-03-25T19:02:08.608Z",
+    "createdAt": "2026-03-25T19:02:08.608Z",
+    "versionId": "56ee24ad-56b9-41a3-b225-8e1a2d59eae7",
+    "workflowId": "QCVo6a4w9fCAvxRp",
+    "nodes": [
+      {
+        "id": "webhook-node",
+        "name": "Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1.1,
+        "position": [
+          0,
+          0
+        ],
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "save-order",
+          "responseMode": "lastNode",
+          "options": {}
+        },
+        "webhookId": "cb48aa82-7ea9-42b7-872f-5b76686300cc"
+      },
+      {
+        "id": "post-pedido",
+        "name": "Post Pedido Supabase",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          220,
+          0
+        ],
+        "continueOnFail": true,
+        "parameters": {
+          "method": "POST",
+          "url": "https://eqnjyygokjinmsfvogxi.supabase.co/rest/v1/pedidos",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "apikey",
+                "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbmp5eWdva2ppbm1zZnZvZ3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NzcxMjEsImV4cCI6MjA4OTI1MzEyMX0.BrVsESdtgMBnPjfZfwreg7PWg-HIgiLO5-QoN0qqbkE"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "Prefer",
+                "value": "return=representation"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ JSON.stringify({\nnotes: $json.body.pedido || '',\naddress: $json.body.tipo_entrega === 'pickup' ? 'Retiro en local' : ($json.body.direccion || ''),\ndelivery_type: $json.body.tipo_entrega === 'pickup' ? 'pickup' : 'delivery',\ntotal: parseFloat($json.body.total || 0),\nstatus: 'new',\npayment_method: 'cash',\ncustomer_name: $json.body.nombre || '',\ncustomer_phone: $json.body.numero || ''\n}) }}",
+          "options": {}
+        }
+      },
+      {
+        "id": "gsheets-node",
+        "name": "Google Sheets Append",
+        "type": "n8n-nodes-base.googleSheets",
+        "typeVersion": 4.5,
+        "position": [
+          440,
+          0
+        ],
+        "continueOnFail": true,
+        "parameters": {
+          "operation": "append",
+          "documentId": {
+            "__rl": true,
+            "value": "1rKxYr7mIfE5_D9dNOc8R20VqEEQjmBiXJWBStwMkwDs",
+            "mode": "list",
+            "cachedResultName": "plantilla_pedidos_n8n"
+          },
+          "sheetName": {
+            "__rl": true,
+            "value": 1007445674,
+            "mode": "list",
+            "cachedResultName": "Pedidos"
+          },
+          "columns": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "ID Pedido": "{{ Post Pedido Supabase.first().json.id || Post Pedido Supabase.first().json[0]?.id || '' }}",
+              "Nombre del Cliente": "={{ $('Webhook').first().json.body.nombre || '' }}",
+              "Pedido": "={{ $('Webhook').first().json.body.pedido || '' }}",
+              "Precio": "={{ $('Webhook').first().json.body.total || '0' }}",
+              "Direcci├│n": "={{ $('Webhook').first().json.body.tipo_entrega === 'pickup' ? 'Retiro en local' : ($('Webhook').first().json.body.direccion || '') }}",
+              "Tipo": "={{ $('Webhook').first().json.body.tipo_entrega === 'pickup' ? 'Retiro en local' : 'Delivery' }}",
+              "Fecha": "={{ new Date().toLocaleDateString('es-AR') }}",
+              "Hora": "={{ new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) }}",
+              "Estado": "=nuevo",
+              "Notas": "={{ $('Webhook').first().json.body.numero || '' }}"
+            },
+            "matchingColumns": [],
+            "schema": []
+          },
+          "options": {}
+        },
+        "credentials": {
+          "googleSheetsOAuth2Api": {
+            "id": "67EM3O1xJzTRvbMN",
+            "name": "Google Sheets account 4"
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Webhook": {
+        "main": [
+          [
+            {
+              "node": "Post Pedido Supabase",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Post Pedido Supabase": {
+        "main": [
+          [
+            {
+              "node": "Google Sheets Append",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "authors": "matias rodriguez",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-03-25T19:02:08.659Z",
+        "id": 289,
+        "workflowId": "QCVo6a4w9fCAvxRp",
+        "versionId": "56ee24ad-56b9-41a3-b225-8e1a2d59eae7",
+        "event": "activated",
+        "userId": "6704710c-953e-4637-8393-b7e996be2b7a"
+      },
+      {
+        "createdAt": "2026-03-25T19:02:08.644Z",
+        "id": 288,
+        "workflowId": "QCVo6a4w9fCAvxRp",
+        "versionId": "56ee24ad-56b9-41a3-b225-8e1a2d59eae7",
+        "event": "deactivated",
+        "userId": "6704710c-953e-4637-8393-b7e996be2b7a"
+      }
+    ]
+  }
+}

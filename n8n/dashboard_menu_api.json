@@ -1,0 +1,166 @@
+{
+  "name": "Dashboard Menu API (Google Sheets)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "menu-api",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "id": "e4bbf2c8-8df0-4a8b-a45b-df7cdb5e1a11"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "documentId": {
+          "__rl": true,
+          "value": "1WUQRUqR-u8FLENLJUuxpNepQ3eezlaw6yo8CI0fVYq4",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1WUQRUqR-u8FLENLJUuxpNepQ3eezlaw6yo8CI0fVYq4/edit#gid=0"
+        },
+        "options": {}
+      },
+      "name": "Get Menu",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [650, 200],
+      "id": "c6a2d98d-1927-4a11-b1e9-6f7f2b6a9c8b",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VIUbLm4ucKWx8jEh",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1WUQRUqR-u8FLENLJUuxpNepQ3eezlaw6yo8CI0fVYq4",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Hoja 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1WUQRUqR-u8FLENLJUuxpNepQ3eezlaw6yo8CI0fVYq4/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Producto": "={{ $json.body.Producto }}",
+            "Tipo": "={{ $json.body.Tipo }}",
+            "Disponible": "={{ $json.body.Disponible }}",
+            "Precio": "={{ $json.body.Precio }}",
+            "Ingredientes": "={{ $json.body.Ingredientes }}"
+          },
+          "matchingColumns": ["Producto"],
+          "schema": [
+            { "id": "Producto", "displayName": "Producto", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Tipo", "displayName": "Tipo", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Disponible", "displayName": "Disponible", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Precio", "displayName": "Precio", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "Ingredientes", "displayName": "Ingredientes", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Update Menu",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [650, 400],
+      "id": "f5e9d98d-1927-4a11-b1e9-6f7f2b6a9c8b",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "VIUbLm4ucKWx8jEh",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "cond-1",
+                    "leftValue": "={{ $json.headers.host }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "GET"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [450, 300],
+      "id": "a9e8b2c4-1234-5678-9abc-def012345678"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Get Menu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
