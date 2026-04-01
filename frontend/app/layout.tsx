@@ -58,7 +58,7 @@ export default function RootLayout({
 
             {/* Main scrollable area */}
             <main className="flex-1 overflow-y-auto w-full relative">
-              <div className="mx-auto max-w-7xl pt-8 pb-12 px-4 sm:px-8">
+              <div className="page-content">
                 {children}
               </div>
             </main>

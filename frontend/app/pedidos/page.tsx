@@ -313,7 +313,8 @@ export default function PedidosPage() {
   const byStatus = (status: OrderStatus) => orders.filter(o => o.status === status);
 
   return (
-    <div className="p-6 h-full overflow-hidden flex flex-col bg-transparent text-white">
+    <div className="page-fullscreen" style={{ background: "rgb(8,8,14)", minHeight: "calc(100vh - 56px)" }}>
+    <div className="p-6 h-full overflow-hidden flex flex-col text-white">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
@@ -389,6 +390,7 @@ export default function PedidosPage() {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.1); }
       `}</style>
+    </div>
     </div>
   );
 }

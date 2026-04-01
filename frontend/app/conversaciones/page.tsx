@@ -277,6 +277,7 @@ export default function ConversasPage() {
   };
 
   return (
+    <div className="page-fullscreen">
     <div className="flex h-full lg:h-screen w-full relative overflow-hidden" style={{ height: "calc(100vh - 56px)" }}>
       {/* Left: conversation list */}
       <div
@@ -529,6 +530,7 @@ export default function ConversasPage() {
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

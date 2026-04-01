@@ -91,4 +91,30 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  /* Default page padding container */
+  .page-content {
+    max-width: 80rem;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 2rem 1rem 3rem;
+  }
+
+  @media (min-width: 640px) {
+    .page-content {
+      padding-left: 2rem;
+      padding-right: 2rem;
+    }
+  }
+
+  /* Full-screen pages (like chat) escape the page-content padding */
+  .page-fullscreen {
+    margin: -2rem -1rem -3rem;
+  }
+
+  @media (min-width: 640px) {
+    .page-fullscreen {
+      margin: -2rem -2rem -3rem;
+    }
+  }
 }
