@@ -190,12 +190,21 @@ const ModulosPage = () => {
       if (isWa) setWaActive(currentVal); else setIgActive(currentVal);
       showToast('Error al guardar el cambio', false);
     } else {
-      // If disabling, also update all active conversations for that channel to ai_active=false
+      const source = isWa ? 'whatsapp' : 'instagram';
       if (!newVal) {
-        const source = isWa ? 'whatsapp' : 'instagram';
+        // Disabling: set ai_active=false on all active conversations for this channel
         await supabase
           .from('conversaciones')
           .update({ ai_active: false })
+          .eq('restaurant_id', RESTAURANT_ID)
+          .eq('source', source)
+          .eq('status', 'active');
+      } else {
+        // Re-enabling: reset ai_active=true on all active conversations for this channel
+        // so the AI can start responding again
+        await supabase
+          .from('conversaciones')
+          .update({ ai_active: true })
           .eq('restaurant_id', RESTAURANT_ID)
           .eq('source', source)
           .eq('status', 'active');
