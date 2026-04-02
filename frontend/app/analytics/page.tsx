@@ -108,24 +108,22 @@ export default function AnalyticsPage() {
       supabase
         .from("pedidos")
         .select("total, status, created_at")
-        .eq("restaurant_id", RESTAURANT_ID)
         .gte("created_at", since),
       supabase
         .from("conversaciones")
         .select("id, status, source, ai_active, created_at")
-        .eq("restaurant_id", RESTAURANT_ID)
         .gte("created_at", since),
     ]);
 
     const pedidos = pedidosRes.data ?? [];
     const convs   = convRes.data   ?? [];
 
-    const ingresos_totales  = pedidos.reduce((acc, p) => acc + (p.total || 0), 0);
+    const ingresos_totales  = pedidos.reduce((acc, p) => acc + (Number(p.total) || 0), 0);
     const pedidos_entregados = pedidos.filter(p => p.status === "delivered").length;
     const pedidos_semana    = pedidos.filter(p => p.created_at >= weekAgo).length;
     const ingresos_semana   = pedidos
       .filter(p => p.created_at >= weekAgo)
-      .reduce((acc, p) => acc + (p.total || 0), 0);
+      .reduce((acc, p) => acc + (Number(p.total) || 0), 0);
 
     setMetrics({
       ingresos_totales,
