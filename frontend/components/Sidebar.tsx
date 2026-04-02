@@ -9,6 +9,7 @@ const navItems = [
   { href: "/conversaciones", label: "Chats", icon: "chat" },
   { href: "/pedidos", label: "Pedidos", icon: "restaurant_menu" },
   { href: "/menu", label: "Menú", icon: "menu_book" },
+  { href: "/mesas", label: "Mesas", icon: "table_restaurant" },
   { href: "/analytics", label: "Analíticas", icon: "analytics" },
   { href: "/modulos", label: "Módulos", icon: "smart_toy" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
