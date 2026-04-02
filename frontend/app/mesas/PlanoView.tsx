@@ -15,11 +15,11 @@ export interface Table {
   w: number;
   h: number;
   // Detail info
-  current_client?: string;
-  time_elapsed?: string;
-  current_bill?: number;
-  reservation_time?: string;
-  zone?: string;
+  current_client?: string | null;
+  time_elapsed?: string | null;
+  current_bill?: number | null;
+  reservation_time?: string | null;
+  zone?: string | null;
 }
 
 export default function PlanoView() {
@@ -152,7 +152,7 @@ export default function PlanoView() {
                   width: `${table.w}px`, 
                   height: `${table.h}px`,
                   justifyContent: isBarra ? "space-between" : "center",
-                  flexDirection: isBarra ? "row" : "col",
+                  flexDirection: isBarra ? "row" : "column",
                   padding: isBarra ? "0 24px" : "0"
                 }}
               >
