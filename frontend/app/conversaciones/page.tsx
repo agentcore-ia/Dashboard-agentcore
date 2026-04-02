@@ -264,13 +264,12 @@ export default function ConversasPage() {
                       className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-all border-b border-stone-50 ${isSelected ? "bg-orange-50 border-l-2 border-l-orange-500" : "hover:bg-stone-50"}`}
                     >
                       {/* Avatar */}
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: color + "22", color }}>
-                        {getInitial(conv.customer_name)}
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: conv.source === 'instagram' ? '#e1306c22' : '#25d36622' }}>
+                        {conv.source === 'instagram' ? <IGIcon size={20} /> : <WAIcon size={20} />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-0.5">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            {conv.source === 'instagram' ? <IGIcon size={11} /> : <WAIcon size={11} />}
                             <span className="text-sm font-semibold text-stone-800 truncate">{conv.customer_name}</span>
                           </div>
                           <span className="text-[10px] text-stone-400 flex-shrink-0 ml-2">{timeAgo(conv.last_message_at)}</span>
@@ -306,8 +305,8 @@ export default function ConversasPage() {
                     <button onClick={() => setMobileView("list")} className="lg:hidden p-1.5 -ml-1 text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-100">
                       <ArrowLeft className="w-5 h-5" />
                     </button>
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: "#f9731622", color: "#fb923c" }}>
-                      {getInitial(selected.customer_name)}
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: selected.source === 'instagram' ? '#e1306c22' : '#25d36622' }}>
+                      {selected.source === 'instagram' ? <IGIcon size={18} /> : <WAIcon size={18} />}
                     </div>
                     <div>
                       <p className="font-semibold text-sm text-stone-800">{selected.customer_name}</p>
@@ -351,8 +350,8 @@ export default function ConversasPage() {
                     <div className="p-4">
                       {/* Avatar + info */}
                       <div className="flex flex-col items-center text-center mb-5 pb-5 border-b border-stone-100">
-                        <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold mb-3" style={{ background: "#f9731622", color: "#fb923c" }}>
-                          {getInitial(selected.customer_name)}
+                        <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3 flex-shrink-0" style={{ background: selected.source === 'instagram' ? '#e1306c22' : '#25d36622' }}>
+                          {selected.source === 'instagram' ? <IGIcon size={28} /> : <WAIcon size={28} />}
                         </div>
                         <p className="font-bold text-stone-800 text-sm">{selected.customer_name}</p>
                         <div className="flex items-center gap-1.5 mt-1">
