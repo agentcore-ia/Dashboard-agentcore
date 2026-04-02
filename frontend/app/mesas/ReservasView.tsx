@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Table, initialTables } from "./PlanoView";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { Table } from "./PlanoView";
 
 interface Reservation {
   id: string;
@@ -15,36 +16,69 @@ interface Reservation {
   channel: "WhatsApp" | "Instagram" | "Teléfono";
 }
 
-const mockReservations: Reservation[] = [
-  { id: "r1", table_id: "1", client_name: "Familia Ortiz", client_phone: "+34 622 123 456", pax: 4, start_time: "18:00", end_time: "19:30", status: "confirmed", channel: "WhatsApp" },
-  { id: "r2", table_id: "3", client_name: "Perez G.", pax: 4, start_time: "19:30", end_time: "20:30", status: "cancelled", channel: "WhatsApp" },
-  { id: "r3", table_id: "4", client_name: "Sr. Ruiz", pax: 6, start_time: "20:30", end_time: "22:00", status: "confirmed", channel: "Teléfono" },
-];
-
 const timeSlots = ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00"];
 
 export default function ReservasView() {
-  const [reservations, setReservations] = useState<Reservation[]>(mockReservations);
-  const [selectedResId, setSelectedResId] = useState<string | null>("r1");
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [selectedResId, setSelectedResId] = useState<string | null>(null);
   const [filter, setFilter] = useState("Todo");
 
+  const fetchTables = async () => {
+    const { data } = await supabase.from('mesas').select('*');
+    if (data) setTables(data as Table[]);
+  };
+
+  const fetchReservations = async () => {
+    const { data } = await supabase.from('reservas').select('*');
+    if (data) setReservations(data as Reservation[]);
+  };
+
+  useEffect(() => {
+    fetchTables();
+    fetchReservations();
+
+    const tablesChannel = supabase.channel('realtime-mesas-reservas')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, () => {
+        fetchTables();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, () => {
+        fetchReservations();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tablesChannel);
+    };
+  }, []);
+
   const selectedRes = reservations.find(r => r.id === selectedResId);
-  const selectedTable = selectedRes ? initialTables.find(t => t.id === selectedRes.table_id) : null;
+  const selectedTable = selectedRes ? tables.find(t => t.id === selectedRes.table_id) : null;
 
   // Simple function to calculate left/width based on time strings
   const getSlotPosition = (start: string, end: string) => {
     const startIndex = timeSlots.indexOf(start);
     const endIndex = timeSlots.indexOf(end);
     
-    // Fallbacks if time not exactly matching slots (simplified for UI demonstration)
     const validStart = startIndex >= 0 ? startIndex : 0;
     const validEnd = endIndex >= 0 ? endIndex : 2;
     
-    // Each column is 100px min width 
     return {
       left: `${validStart * 100}px`,
       width: `${(validEnd - validStart) * 100}px`
     };
+  };
+
+  const updateReservationStatus = async (id: string, status: "confirmed" | "seated" | "cancelled") => {
+    await supabase.from('reservas').update({ status }).eq('id', id);
+    if (status === "seated" && selectedTable) {
+        // also update the table to occupied
+        await supabase.from('mesas').update({ 
+            status: 'occupied', 
+            current_client: selectedRes?.client_name, 
+            time_elapsed: '0 min' 
+        }).eq('id', selectedTable.id);
+    }
   };
 
   return (
@@ -92,51 +126,38 @@ export default function ReservasView() {
 
           {/* Grid Rows */}
           <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col">
-            {initialTables.filter(t => filter === "Todo" || t.zone === filter).map(table => {
+            {tables.filter(t => filter === "Todo" || t.zone === filter).map(table => {
               const tableRes = reservations.filter(r => r.table_id === table.id);
 
               return (
                 <div key={table.id} className="flex border-b border-stone-100 group hover:bg-stone-50/50 transition-colors h-24 shrink-0 relative">
                   <div className="w-32 flex-shrink-0 p-4 bg-stone-50/50 border-r border-stone-100 flex flex-col justify-center z-20">
-                    <span className="font-bold text-stone-800">{table.name}</span>
-                    <span className="text-[10px] text-stone-500">{table.zone} · {table.capacity}pax</span>
+                    <span className="font-bold text-stone-800 text-sm whitespace-nowrap">{table.name}</span>
+                    <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">{table.zone} · {table.capacity}p</span>
                   </div>
-                  
-                  <div className="flex-1 flex relative overflow-x-auto no-scrollbar">
-                    {/* Background Grid Lines rendering */}
-                    <div className="absolute inset-0 flex pointer-events-none">
-                      {timeSlots.map(time => (
-                        <div key={time} className="flex-1 min-w-[100px] border-r border-stone-100 shrink-0"></div>
-                      ))}
-                    </div>
-
-                    {/* Reservation Blocks */}
+                  <div className="flex-1 relative overflow-hidden bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTAwIDBMMTAwIDEwMCIgc3Ryb2tlPSIjZjVmNWY0IiBzdHJva2Utd2lkdGg9IjEiIGZpbGw9Im5vbmUiLz48L3N2Zz4=')]">
                     {tableRes.map(res => {
                        const pos = getSlotPosition(res.start_time, res.end_time);
                        const isSelected = selectedResId === res.id;
-                       const isCancelled = res.status === "cancelled";
                        
-                       let bgClass = "bg-green-50 border-green-500 text-green-700 hover:bg-green-100";
-                       if (isCancelled) bgClass = "bg-red-50 border-red-500 text-red-700 hover:bg-red-100 opacity-80";
-                       else if (isSelected) bgClass = "bg-primary/10 border-primary text-primary shadow-sm";
-
+                       let bgClass = "bg-secondary text-white shadow-secondary/20";
+                       if (res.status === "seated") bgClass = "bg-primary text-white shadow-primary/20";
+                       if (res.status === "cancelled") bgClass = "bg-stone-200 text-stone-500 line-through opacity-60";
+                       
                        return (
                          <div 
                            key={res.id}
                            onClick={() => setSelectedResId(res.id)}
-                           className={`absolute top-2 bottom-2 z-10 p-1 shrink-0 cursor-pointer`}
+                           className={`absolute top-2 bottom-2 rounded-xl p-3 flex flex-col justify-center cursor-pointer transition-all shadow-sm z-10 overflow-hidden group/res ${bgClass} ${isSelected ? 'ring-2 ring-offset-2 ring-stone-900 border-none' : 'border border-white/20 hover:scale-[1.02]'}`}
                            style={{ left: pos.left, width: pos.width }}
                          >
-                           <div className={`h-full border-l-4 rounded-lg p-2 transition-all ${bgClass} ${isSelected ? 'scale-[1.02]' : 'hover:scale-[1.02]'}`}>
-                             <div className="flex justify-between items-start">
-                               <span className="text-[11px] font-bold truncate">{res.client_name}</span>
-                               {isCancelled && <span className="text-[9px] bg-red-100 text-red-600 px-1 rounded font-bold">Canc.</span>}
-                             </div>
-                             <div className="flex items-center gap-1 mt-1 opacity-80">
-                               <span className="material-symbols-outlined text-[14px]">group</span>
-                               <span className="text-[10px] font-bold">{res.pax} pax</span>
-                             </div>
-                           </div>
+                            <p className="font-bold text-xs truncate max-w-full">{res.client_name}</p>
+                            <div className="flex items-center gap-1 opacity-80 mt-0.5">
+                               <span className="material-symbols-outlined text-[10px]">person</span>
+                               <span className="font-semibold text-[10px]">{res.pax}p</span>
+                               <span className="mx-1">•</span>
+                               <span className="font-semibold text-[10px]">{res.start_time} - {res.end_time}</span>
+                            </div>
                          </div>
                        );
                     })}
@@ -147,95 +168,79 @@ export default function ReservasView() {
           </div>
         </div>
 
-        {/* Right Detail Panel */}
+        {/* Detail Panel */}
         {selectedRes && selectedTable && (
-          <aside className="w-80 lg:w-96 flex-shrink-0 flex flex-col gap-4 animate-in fade-in slide-in-from-right-4">
-            <div className="bg-white rounded-2xl shadow-lg border border-stone-200 flex flex-col overflow-y-auto custom-scrollbar">
-              <div className="bg-primary p-6 text-white rounded-t-2xl">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="text-xl font-bold font-headline">{selectedRes.client_name}</h3>
-                    <div className="flex items-center gap-2 text-xs font-semibold opacity-90 mt-2">
-                       <span className="material-symbols-outlined text-[16px]">phone</span>
-                       {selectedRes.client_phone || 'Sin teléfono'}
-                    </div>
-                  </div>
-                  <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
-                    <span className="material-symbols-outlined text-white" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+          <aside className="w-80 lg:w-96 flex flex-col gap-4 animate-in fade-in slide-in-from-right-4">
+            <div className="bg-surface-container-lowest p-6 lg:p-8 rounded-2xl shadow-lg border border-stone-200 flex flex-col h-full relative overflow-y-auto custom-scrollbar">
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h3 className="text-2xl font-extrabold font-headline text-on-surface">{selectedRes.client_name}</h3>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className={`inline-flex items-center px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-widest ${
+                      selectedRes.status === 'confirmed' ? 'bg-secondary-container/50 text-secondary' :
+                      selectedRes.status === 'seated' ? 'bg-primary/10 text-primary' :
+                      'bg-stone-100 text-stone-500'
+                    }`}>
+                      {selectedRes.status === 'confirmed' ? 'Confirmada' : selectedRes.status === 'seated' ? 'Sentados' : 'Cancelada'}
+                    </span>
+                    <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">Por {selectedRes.channel}</span>
                   </div>
                 </div>
+                <button onClick={() => setSelectedResId(null)} className="p-2 hover:bg-stone-100 rounded-full text-stone-400 transition-colors">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
               </div>
 
-              <div className="p-6 space-y-6">
+              <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Capacidad</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="material-symbols-outlined text-primary text-lg">groups</span>
-                      <span className="font-bold text-stone-800">{selectedRes.pax} Personas</span>
-                    </div>
+                  <div className="flex flex-col gap-1 bg-stone-50 p-3 rounded-xl border border-stone-100">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-60">Horario</label>
+                    <p className="text-lg font-headline font-extrabold text-on-surface">{selectedRes.start_time}</p>
+                    <p className="text-xs text-stone-500 font-semibold">hasta {selectedRes.end_time}</p>
                   </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Hora</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="material-symbols-outlined text-primary text-lg">schedule</span>
-                      <span className="font-bold text-stone-800">{selectedRes.start_time} - {selectedRes.end_time}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Ubicación</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="material-symbols-outlined text-primary text-lg">restaurant</span>
-                      <span className="font-bold text-stone-800">{selectedTable.name}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">Canal</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-[10px] text-white font-bold">AI</div>
-                      <span className="font-bold text-stone-800">{selectedRes.channel}</span>
-                    </div>
+                  <div className="flex flex-col gap-1 bg-stone-50 p-3 rounded-xl border border-stone-100">
+                     <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-60">Mesa</label>
+                     <p className="text-lg font-headline font-extrabold text-on-surface">{selectedTable.name}</p>
+                     <p className="text-xs text-stone-500 font-semibold">{selectedRes.pax} Personas</p>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-stone-100 space-y-2">
-                  <button className="w-full py-3 bg-tertiary text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-tertiary-container transition-all active:scale-95">
-                     <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                     Confirmar llegada
-                  </button>
-                  <button className="w-full py-3 bg-stone-50 border border-stone-200 text-stone-800 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-stone-100 transition-all active:scale-95 shadow-sm">
-                     <span className="material-symbols-outlined text-[18px]">chair</span>
-                     Sentar cliente
-                  </button>
+                <div className="flex flex-col gap-1">
+                   <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-60">Contacto</label>
+                   <p className="text-sm font-bold text-on-surface flex items-center gap-2">
+                     <span className="material-symbols-outlined text-[16px] text-stone-400">call</span>
+                     {selectedRes.client_phone || 'No registrado'}
+                   </p>
                 </div>
+
+                {selectedRes.status === 'confirmed' && (
+                  <div className="flex flex-col gap-3 pt-4 border-t border-stone-100">
+                    <button 
+                        onClick={() => updateReservationStatus(selectedRes.id, 'seated')}
+                        className="w-full bg-primary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-container transition-all active:scale-95 text-sm"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">how_to_reg</span>
+                      Confirmar llegada (Sentar)
+                    </button>
+                    <button 
+                        onClick={() => updateReservationStatus(selectedRes.id, 'cancelled')}
+                        className="w-full text-stone-400 py-2 font-medium text-xs hover:text-red-600 transition-colors flex items-center justify-center gap-1 mt-2"
+                    >
+                       <span className="material-symbols-outlined text-sm">cancel</span>
+                       Marcar No Show / Cancelar
+                    </button>
+                  </div>
+                )}
+                
+                {selectedRes.status === 'seated' && (
+                  <div className="flex flex-col gap-3 pt-4 border-t border-stone-100">
+                    <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 flex gap-3 text-primary">
+                        <span className="material-symbols-outlined">info</span>
+                        <p className="text-xs font-medium">Los clientes ya han sido sentados. Las acciones de esta mesa se gestionan desde el plano principal.</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-               <button className="w-full py-3 px-4 bg-stone-50 border border-stone-200 text-stone-600 rounded-xl font-bold flex items-center gap-3 hover:bg-stone-100 transition-all shadow-sm">
-                  <span className="material-symbols-outlined text-[18px]">sync_alt</span>
-                  Cambiar mesa
-               </button>
-               <button className="w-full py-3 px-4 bg-stone-50 border border-stone-200 text-stone-600 rounded-xl font-bold flex items-center gap-3 hover:bg-stone-100 transition-all shadow-sm">
-                  <span className="material-symbols-outlined text-[18px]">edit</span>
-                  Editar reserva
-               </button>
-               <button className="w-full py-3 px-4 bg-red-50 border border-red-100 text-red-600 rounded-xl font-bold flex items-center gap-3 hover:bg-red-100 transition-all shadow-sm mt-2">
-                  <span className="material-symbols-outlined text-[18px]">cancel</span>
-                  Cancelar reserva
-               </button>
-            </div>
-            
-            {/* Ad/Tip Section */}
-            <div className="mt-auto p-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-900 shadow-sm relative overflow-hidden">
-               <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full -translate-y-1/2 translate-x-1/3 blur-xl"></div>
-               <div className="flex gap-3 relative z-10">
-                  <span className="material-symbols-outlined text-[24px] text-indigo-500">auto_awesome</span>
-                  <div>
-                     <p className="text-xs font-bold text-indigo-700 uppercase tracking-widest mb-1">Optimización IA</p>
-                     <p className="text-xs leading-relaxed font-medium">Hemos detectado que puedes reorganizar 3 mesas para acomodar un grupo de 10 a las 21:00.</p>
-                  </div>
-               </div>
             </div>
           </aside>
         )}

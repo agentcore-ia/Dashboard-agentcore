@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
-// Mock Data
+// Export standard interface
 export interface Table {
   id: string;
   name: string;
@@ -19,20 +20,39 @@ export interface Table {
   current_bill?: number;
   reservation_time?: string;
   zone?: string;
-  pxSizeClass?: string;
 }
 
-export const initialTables: Table[] = [
-  { id: "1", name: "Mesa 1", capacity: 4, shape: "square", status: "free", x: 48, y: 48, w: 128, h: 128, zone: "Interior" },
-  { id: "2", name: "Mesa 2", capacity: 2, shape: "circle", status: "free", x: 256, y: 48, w: 128, h: 128, zone: "Interior" },
-  { id: "3", name: "Mesa 3", capacity: 4, shape: "square", status: "occupied", current_client: "Fam. García", time_elapsed: "45 min", x: 48, y: 220, w: 128, h: 128, zone: "Interior" },
-  { id: "4", name: "Mesa 4", capacity: 6, shape: "rectangle", status: "reserved", current_client: "Sr. Ruiz (6p)", reservation_time: "20:30", x: 48, y: 420, w: 192, h: 128, zone: "Interior" },
-  { id: "5", name: "Barra 1", capacity: 1, shape: "barra", status: "occupied", current_client: "M. López", current_bill: 48.5, time_elapsed: "12 min", x: 380, y: 400, w: 256, h: 96, zone: "Barra" },
-];
-
 export default function PlanoView() {
-  const [tables, setTables] = useState<Table[]>(initialTables);
+  const [tables, setTables] = useState<Table[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+
+  const fetchTables = async () => {
+    const { data, error } = await supabase.from('mesas').select('*');
+    if (!error && data) {
+      setTables(data as Table[]);
+    }
+  };
+
+  useEffect(() => {
+    fetchTables();
+
+    const channel = supabase.channel('realtime-mesas')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          fetchTables();
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as Table;
+          setTables(prev => prev.map(t => t.id === updated.id ? updated : t));
+        } else if (payload.eventType === 'DELETE') {
+          setTables(prev => prev.filter(t => t.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const stats = {
     free: tables.filter(t => t.status === "free").length,
@@ -42,6 +62,13 @@ export default function PlanoView() {
   };
 
   const selectedTable = tables.find(t => t.id === selectedTableId);
+
+  const updateTableStatus = async (id: string, status: "free" | "occupied" | "reserved", extras?: Partial<Table>) => {
+    const { error } = await supabase.from('mesas').update({ status, ...extras }).eq('id', id);
+    if (!error) {
+      setTables(prev => prev.map(t => t.id === id ? { ...t, status, ...extras } : t));
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6 w-full h-full animate-in fade-in duration-300">
@@ -230,7 +257,10 @@ export default function PlanoView() {
                   </div>
 
                   <div className="flex flex-col gap-3 pt-4 border-t border-stone-100">
-                    <button className="w-full bg-primary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-container transition-all active:scale-95 text-sm">
+                    <button 
+                      onClick={() => updateTableStatus(selectedTable.id, 'free', { current_client: null, time_elapsed: null, current_bill: null })}
+                      className="w-full bg-primary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-container transition-all active:scale-95 text-sm"
+                    >
                       <span className="material-symbols-outlined text-[18px]">check_circle</span>
                       Finalizar mesa
                     </button>
@@ -263,13 +293,12 @@ export default function PlanoView() {
                   </div>
 
                   <div className="flex flex-col gap-3 pt-4 border-t border-stone-100">
-                    <button className="w-full bg-tertiary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-tertiary/20 hover:bg-tertiary-container transition-all active:scale-95 text-sm">
+                    <button 
+                      onClick={() => updateTableStatus(selectedTable.id, 'occupied', { current_client: 'Cliente Caminante', time_elapsed: '0 min' })}
+                      className="w-full bg-tertiary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-tertiary/20 hover:bg-tertiary-container transition-all active:scale-95 text-sm"
+                    >
                       <span className="material-symbols-outlined text-[18px]">person_add</span>
                       Ocupar mesa
-                    </button>
-                    <button className="w-full bg-white py-3 rounded-xl font-bold text-stone-700 flex items-center justify-center gap-2 border-2 border-stone-200 hover:bg-stone-50 transition-colors text-sm shadow-sm">
-                      <span className="material-symbols-outlined text-[18px]">calendar_add_on</span>
-                      Agendar Reserva
                     </button>
                   </div>
                 </div>
@@ -292,15 +321,17 @@ export default function PlanoView() {
                   </div>
 
                   <div className="flex flex-col gap-3 pt-4 border-t border-stone-100">
-                    <button className="w-full bg-secondary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-secondary/20 hover:bg-secondary-container transition-all active:scale-95 text-sm">
+                    <button 
+                      onClick={() => updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', reservation_time: null })}
+                      className="w-full bg-secondary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-secondary/20 hover:bg-secondary-container transition-all active:scale-95 text-sm"
+                    >
                       <span className="material-symbols-outlined text-[18px]">person_add</span>
                       Sentar clientes
                     </button>
-                    <button className="w-full bg-white py-3 rounded-xl font-bold text-stone-700 flex items-center justify-center gap-2 border border-stone-200 hover:bg-stone-50 transition-colors text-sm shadow-sm">
-                      <span className="material-symbols-outlined text-[18px]">edit</span>
-                      Editar reserva
-                    </button>
-                    <button className="w-full text-stone-400 py-2 font-medium text-xs hover:text-red-600 transition-colors flex items-center justify-center gap-1 mt-2">
+                    <button 
+                      onClick={() => updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null })}
+                      className="w-full text-stone-400 py-2 font-medium text-xs hover:text-red-600 transition-colors flex items-center justify-center gap-1 mt-2"
+                    >
                        <span className="material-symbols-outlined text-sm">cancel</span>
                        Cancelar reserva
                     </button>

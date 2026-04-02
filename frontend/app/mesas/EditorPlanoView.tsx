@@ -1,17 +1,78 @@
 "use client";
 
-import { useState } from "react";
-import { Table, initialTables } from "./PlanoView";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { Table } from "./PlanoView";
 
 interface EditorPlanoViewProps {
   onClose: () => void;
 }
 
 export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
-  const [tables, setTables] = useState<Table[]>(initialTables);
+  const [tables, setTables] = useState<Table[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchTables = async () => {
+      const { data } = await supabase.from('mesas').select('*');
+      if (data) setTables(data as Table[]);
+    };
+    fetchTables();
+  }, []);
 
   const selectedTable = tables.find(t => t.id === selectedTableId);
+
+  const handlePointerDown = (e: React.PointerEvent, id: string) => {
+    e.stopPropagation();
+    setSelectedTableId(id);
+    const table = tables.find(t => t.id === id);
+    if (!table) return;
+
+    // We only want to drag with left click
+    if (e.button !== 0) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialT = { x: table.x, y: table.y };
+    
+    const onPointerMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        // Snap to grid of 32px
+        const snap = 32;
+        const newX = Math.max(0, Math.round((initialT.x + dx) / snap) * snap);
+        const newY = Math.max(0, Math.round((initialT.y + dy) / snap) * snap);
+        
+        setTables(prev => prev.map(t => t.id === id ? { ...t, x: newX, y: newY } : t));
+    };
+
+    const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  const updateSelectedField = (field: keyof Table, value: any) => {
+    if (!selectedTableId) return;
+    setTables(prev => prev.map(t => t.id === selectedTableId ? { ...t, [field]: value } : t));
+  };
+
+  const saveChanges = async () => {
+    setIsSaving(true);
+    // update all tables
+    const promises = tables.map(t => supabase.from('mesas').update({ 
+        x: t.x, y: t.y, w: t.w, h: t.h, 
+        name: t.name, capacity: t.capacity, zone: t.zone
+    }).eq('id', t.id));
+    
+    await Promise.all(promises);
+    setIsSaving(false);
+    onClose();
+  };
 
   return (
     <div className="flex flex-col h-screen w-full bg-surface text-on-surface animate-in fade-in zoom-in-95 duration-200">
@@ -36,8 +97,8 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
             <span className="px-2 font-bold text-xs text-stone-700">85%</span>
             <button className="p-2 text-stone-500 hover:text-primary transition-colors"><span className="material-symbols-outlined text-[18px]">add_circle_outline</span></button>
           </div>
-          <button onClick={onClose} className="px-6 py-2 bg-primary text-white rounded-full text-sm font-bold shadow-md hover:bg-primary-container active:scale-95 transition-all">
-            Guardar Plano
+          <button onClick={saveChanges} disabled={isSaving} className="px-6 py-2 bg-primary text-white rounded-full text-sm font-bold shadow-md hover:bg-primary-container active:scale-95 transition-all disabled:opacity-50">
+            {isSaving ? "Guardando..." : "Guardar Plano"}
           </button>
         </nav>
       </header>
@@ -69,23 +130,6 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
                   </button>
                 </div>
               </section>
-              <section>
-                <p className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-3 px-2">Infraestructura</p>
-                <div className="space-y-2">
-                  <button className="w-full flex items-center gap-3 p-3 bg-white border border-stone-100 rounded-xl hover:border-stone-300 transition-all shadow-sm">
-                    <span className="material-symbols-outlined text-stone-400 text-lg">horizontal_rule</span>
-                    <span className="text-xs font-bold text-stone-700">Pared / Divisor</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 p-3 bg-white border border-stone-100 rounded-xl hover:border-stone-300 transition-all shadow-sm">
-                    <span className="material-symbols-outlined text-stone-400 text-lg">door_open</span>
-                    <span className="text-xs font-bold text-stone-700">Puerta / Entrada</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 p-3 bg-white border border-stone-100 rounded-xl hover:border-stone-300 transition-all shadow-sm">
-                    <span className="material-symbols-outlined text-stone-400 text-lg">liquor</span>
-                    <span className="text-xs font-bold text-stone-700">Zona Barra</span>
-                  </button>
-                </div>
-              </section>
             </div>
           </div>
         </aside>
@@ -107,19 +151,11 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
                  return (
                    <div 
                      key={table.id}
-                     onClick={(e) => { e.stopPropagation(); setSelectedTableId(table.id); }}
-                     className={`absolute flex items-center justify-center font-bold transition-shadow ${isSelected ? 'ring-2 ring-primary bg-primary/5 shadow-md z-20' : 'bg-stone-50 border-2 border-stone-200 text-stone-400 z-10'} cursor-move hover:border-primary/50`}
+                     onPointerDown={(e) => handlePointerDown(e, table.id)}
+                     className={`absolute flex items-center justify-center font-bold transition-shadow ${isSelected ? 'ring-2 ring-primary bg-primary/5 shadow-md z-20' : 'bg-stone-50 border-2 border-stone-200 text-stone-400 z-10'} cursor-move hover:border-primary/50 select-none`}
                      style={{ left: table.x, top: table.y, width: table.w, height: table.h }}
                    >
                      <span className="uppercase tracking-widest text-xs opacity-50">{table.name}</span>
-                     {isSelected && (
-                      <>
-                        <div className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nw-resize shadow-sm"></div>
-                        <div className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-ne-resize shadow-sm"></div>
-                        <div className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-sw-resize shadow-sm"></div>
-                        <div className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-se-resize shadow-sm"></div>
-                      </>
-                     )}
                    </div>
                  );
               }
@@ -127,35 +163,21 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
               return (
                 <div 
                   key={table.id}
-                  onClick={(e) => { e.stopPropagation(); setSelectedTableId(table.id); }}
-                  className={`absolute flex items-center justify-center font-bold text-lg transition-all ${isCircle ? "rounded-full" : "rounded-xl"} ${
+                  onPointerDown={(e) => handlePointerDown(e, table.id)}
+                  className={`absolute flex items-center justify-center font-bold text-lg ${isCircle ? "rounded-full" : "rounded-xl"} ${
                     isSelected 
                       ? 'bg-primary/10 border-4 border-primary text-primary shadow-[0_0_20px_rgba(158,32,22,0.15)] z-20 scale-100' 
                       : 'bg-white border-2 border-stone-300 text-stone-500 z-10 scale-95 hover:border-stone-400 hover:scale-100'
-                  } cursor-move`}
+                  } transition-[background-color,border-color,box-shadow,transform] duration-75 cursor-move select-none`}
                   style={{ left: table.x, top: table.y, width: table.w, height: table.h }}
                 >
                   {table.name}
-                  {isSelected && (
-                    <>
-                      <div className="absolute -top-3 -left-3 w-5 h-5 bg-white border-2 border-primary rounded-full cursor-nw-resize shadow-sm"></div>
-                      <div className="absolute -top-3 -right-3 w-5 h-5 bg-white border-2 border-primary rounded-full cursor-ne-resize shadow-sm"></div>
-                      <div className="absolute -bottom-3 -left-3 w-5 h-5 bg-white border-2 border-primary rounded-full cursor-sw-resize shadow-sm"></div>
-                      <div className="absolute -bottom-3 -right-3 w-5 h-5 bg-white border-2 border-primary rounded-full cursor-se-resize shadow-sm"></div>
-                      
-                      <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 flex bg-stone-800 rounded-full p-1 gap-1 shadow-xl whitespace-nowrap">
-                        <button className="p-1.5 text-white hover:text-primary transition-colors flex items-center justify-center rounded-full"><span className="material-symbols-outlined text-[18px]">content_copy</span></button>
-                        <button className="p-1.5 text-white hover:text-primary transition-colors flex items-center justify-center rounded-full"><span className="material-symbols-outlined text-[18px]">rotate_right</span></button>
-                        <button className="p-1.5 text-red-400 hover:text-red-300 transition-colors flex items-center justify-center rounded-full"><span className="material-symbols-outlined text-[18px]">delete</span></button>
-                      </div>
-                    </>
-                  )}
                 </div>
               );
             })}
 
             {/* Helper grid numbers (Decorative) */}
-            <div className="absolute bottom-4 left-4 text-[10px] text-stone-300 font-mono font-bold tracking-widest shadow-sm">
+            <div className="absolute bottom-4 left-4 text-[10px] text-stone-300 font-mono font-bold tracking-widest shadow-sm pointer-events-none">
                GRID 32px
             </div>
           </div>
@@ -177,17 +199,29 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
                   <input 
                     className="w-full bg-white border border-stone-200 shadow-sm rounded-xl focus:ring-2 focus:border-primary focus:ring-primary/20 hover:border-stone-300 py-3 px-4 font-black tracking-tight text-stone-800 transition-all outline-none" 
                     type="text" 
-                    defaultValue={selectedTable.name}
+                    value={selectedTable.name}
+                    onChange={(e) => updateSelectedField("name", e.target.value)}
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-2 ml-1">Capacidad (Pax)</label>
                   <div className="flex items-center bg-white border border-stone-200 shadow-sm rounded-xl overflow-hidden hover:border-stone-300 transition-all">
-                    <button className="p-3 text-primary hover:bg-stone-50 transition-colors">
+                    <button 
+                      onClick={() => updateSelectedField("capacity", Math.max(1, selectedTable.capacity - 1))}
+                      className="p-3 text-primary hover:bg-stone-50 transition-colors"
+                    >
                       <span className="material-symbols-outlined text-[20px]">remove</span>
                     </button>
-                    <input className="w-full text-center border-0 bg-transparent py-3 font-black text-xl tracking-tighter focus:ring-0 text-stone-800 outline-none" type="number" defaultValue={selectedTable.capacity} />
-                    <button className="p-3 text-primary hover:bg-stone-50 transition-colors">
+                    <input 
+                      className="w-full text-center border-0 bg-transparent py-3 font-black text-xl tracking-tighter focus:ring-0 text-stone-800 outline-none" 
+                      type="number" 
+                      value={selectedTable.capacity} 
+                      onChange={(e) => updateSelectedField("capacity", parseInt(e.target.value) || 1)}
+                    />
+                    <button 
+                      onClick={() => updateSelectedField("capacity", selectedTable.capacity + 1)}
+                      className="p-3 text-primary hover:bg-stone-50 transition-colors"
+                    >
                       <span className="material-symbols-outlined text-[20px]">add</span>
                     </button>
                   </div>
@@ -195,10 +229,14 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
                 <div>
                   <label className="block text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-2 ml-1">Zona Asignada</label>
                   <div className="relative">
-                    <select className="w-full bg-white border border-stone-200 shadow-sm rounded-xl focus:ring-2 focus:border-primary focus:ring-primary/20 hover:border-stone-300 py-3 px-4 font-bold text-stone-800 appearance-none transition-all outline-none">
-                      <option selected={selectedTable.zone === "Interior"}>Interior</option>
-                      <option selected={selectedTable.zone === "Terraza"}>Terraza</option>
-                      <option selected={selectedTable.zone === "Barra"}>Barra</option>
+                    <select 
+                      value={selectedTable.zone || "Interior"}
+                      onChange={(e) => updateSelectedField("zone", e.target.value)}
+                      className="w-full bg-white border border-stone-200 shadow-sm rounded-xl focus:ring-2 focus:border-primary focus:ring-primary/20 hover:border-stone-300 py-3 px-4 font-bold text-stone-800 appearance-none transition-all outline-none"
+                    >
+                      <option value="Interior">Interior</option>
+                      <option value="Terraza">Terraza</option>
+                      <option value="Barra">Barra</option>
                     </select>
                     <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none">expand_content</span>
                   </div>
@@ -225,7 +263,7 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
               <span className="material-symbols-outlined text-orange-500 text-[20px]">lightbulb</span>
               <p className="text-[11px] text-orange-900 leading-relaxed font-medium">
                 <strong className="block mb-1 font-bold">Consejo:</strong> 
-                Arrastra los elementos desde el panel izquierdo. Usa las esquinas para redimensionar con precisión.
+                Arrastra los elementos desde el panel central. Las posiciones se encajarán automáticamente en la cuadrícula de 32px.
               </p>
             </div>
           </div>
@@ -237,9 +275,9 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
         <button onClick={onClose} className="text-stone-300 font-bold tracking-tight text-sm px-6 py-2 hover:text-white hover:bg-stone-800 rounded-full transition-colors h-10 flex items-center">
           Cancelar
         </button>
-        <button onClick={onClose} className="px-8 h-10 bg-primary text-white rounded-full font-extrabold text-sm shadow-[0_0_15px_rgba(158,32,22,0.4)] hover:bg-primary-container hover:scale-105 active:scale-95 transition-all flex items-center gap-2">
+        <button onClick={saveChanges} disabled={isSaving} className="px-8 h-10 bg-primary text-white rounded-full font-extrabold text-sm shadow-[0_0_15px_rgba(158,32,22,0.4)] hover:bg-primary-container hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50">
           <span className="material-symbols-outlined text-[18px]">check</span>
-          Guardar Cambios
+          {isSaving ? "Guardando..." : "Guardar Cambios"}
         </button>
       </footer>
     </div>
