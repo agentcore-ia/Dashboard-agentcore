@@ -24,14 +24,42 @@ export default function ReservasView() {
   const [selectedResId, setSelectedResId] = useState<string | null>(null);
   const [filter, setFilter] = useState("Todo");
 
+  // Normalizes ISO datetime or plain time to "HH:MM"
+  const toHHMM = (value: string): string => {
+    if (!value) return "";
+    // Already HH:MM format
+    if (/^\d{2}:\d{2}$/.test(value)) return value;
+    // ISO datetime like 2026-04-04T21:00:00 or 2026-04-04T21:00:00-03:00
+    const match = value.match(/(\d{2}):(\d{2})/);
+    if (match) return `${match[1]}:${match[2]}`;
+    return value;
+  };
+
   const fetchTables = async () => {
     const { data } = await supabase.from('mesas').select('*');
-    if (data) setTables(data as Table[]);
+    if (data) {
+      // Filter out non-real tables: PARED, empty names, capacity 0 items (floor plan decorators)
+      const realTables = (data as Table[]).filter(t =>
+        t.name &&
+        t.name.trim() !== '' &&
+        !t.name.toUpperCase().startsWith('PARED') &&
+        (t.capacity ?? 0) > 0
+      );
+      setTables(realTables);
+    }
   };
 
   const fetchReservations = async () => {
     const { data } = await supabase.from('reservas').select('*');
-    if (data) setReservations(data as Reservation[]);
+    if (data) {
+      // Normalize start_time and end_time to HH:MM for grid display
+      const normalized = (data as Reservation[]).map(r => ({
+        ...r,
+        start_time: toHHMM(r.start_time),
+        end_time: r.end_time ? toHHMM(r.end_time) : toHHMM(r.start_time) // fallback end = start + 1 slot
+      }));
+      setReservations(normalized);
+    }
   };
 
   useEffect(() => {
@@ -126,7 +154,40 @@ export default function ReservasView() {
 
           {/* Grid Rows */}
           <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col">
-            {tables.filter(t => filter === "Todo" || t.zone === filter).map(table => {
+            {/* Unassigned reservas (created via WhatsApp without a table_id) */}
+            {(() => {
+              const unassigned = reservations.filter(r => !r.table_id && r.status !== 'cancelled');
+              if (unassigned.length === 0 || filter !== "Todo") return null;
+              return (
+                <div className="flex border-b-2 border-secondary/20 group bg-secondary/5 h-24 shrink-0 relative">
+                  <div className="w-32 flex-shrink-0 p-4 bg-secondary/10 border-r border-secondary/20 flex flex-col justify-center z-20">
+                    <span className="font-bold text-secondary text-sm whitespace-nowrap">Sin mesa</span>
+                    <span className="text-[10px] font-bold text-secondary/60 uppercase tracking-widest">WhatsApp · Sin asignar</span>
+                  </div>
+                  <div className="flex-1 relative overflow-hidden flex items-center gap-2 px-3">
+                    {unassigned.map(res => {
+                      const isSelected = selectedResId === res.id;
+                      return (
+                        <div
+                          key={res.id}
+                          onClick={() => setSelectedResId(res.id)}
+                          className={`flex flex-col justify-center rounded-xl p-3 cursor-pointer transition-all shadow-sm h-16 min-w-[160px] bg-secondary text-white ${isSelected ? 'ring-2 ring-offset-2 ring-stone-900' : 'hover:scale-[1.02]'}`}
+                        >
+                          <p className="font-bold text-xs truncate">{res.client_name}</p>
+                          <div className="flex items-center gap-1 opacity-80 mt-0.5">
+                            <span className="material-symbols-outlined text-[10px]">person</span>
+                            <span className="font-semibold text-[10px]">{res.pax}p</span>
+                            <span className="mx-1">•</span>
+                            <span className="font-semibold text-[10px]">{res.start_time}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+            {tables.filter(t => filter === "Todo" || (t.zone ?? '').toLowerCase() === filter.toLowerCase()).map(table => {
               const tableRes = reservations.filter(r => r.table_id === table.id);
 
               return (
@@ -169,7 +230,7 @@ export default function ReservasView() {
         </div>
 
         {/* Detail Panel */}
-        {selectedRes && selectedTable && (
+        {selectedRes && (
           <aside className="w-80 lg:w-96 flex flex-col gap-4 animate-in fade-in slide-in-from-right-4">
             <div className="bg-surface-container-lowest p-6 lg:p-8 rounded-2xl shadow-lg border border-stone-200 flex flex-col h-full relative overflow-y-auto custom-scrollbar">
               <div className="flex justify-between items-start mb-6">
@@ -200,7 +261,7 @@ export default function ReservasView() {
                   </div>
                   <div className="flex flex-col gap-1 bg-stone-50 p-3 rounded-xl border border-stone-100">
                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-60">Mesa</label>
-                     <p className="text-lg font-headline font-extrabold text-on-surface">{selectedTable.name}</p>
+                     <p className="text-lg font-headline font-extrabold text-on-surface">{selectedTable?.name ?? 'Sin asignar'}</p>
                      <p className="text-xs text-stone-500 font-semibold">{selectedRes.pax} Personas</p>
                   </div>
                 </div>
