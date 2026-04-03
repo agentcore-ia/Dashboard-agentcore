@@ -8,7 +8,7 @@ export interface Table {
   id: string;
   name: string;
   capacity: number;
-  shape: "square" | "circle" | "rectangle" | "tall" | "barra";
+  shape: "square" | "circle" | "rectangle" | "tall" | "barra" | "pared" | "puerta" | "terraza";
   status: "free" | "occupied" | "reserved";
   x: number;
   y: number;

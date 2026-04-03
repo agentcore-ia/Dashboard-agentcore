@@ -50,13 +50,21 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
     const snappedX = Math.round(x / snap) * snap;
     const snappedY = Math.round(y / snap) * snap;
 
-    const width = shape === 'rectangle' ? 128 : shape === 'barra' ? 256 : 96;
-    const height = shape === 'barra' ? 64 : 96;
+    let width = 96;
+    let height = 96;
+    let defaultName = `Mesa ${tables.length + 1}`;
+    let capacity = shape === 'circle' ? 2 : 4;
+
+    if (shape === 'rectangle') { width = 128; height = 96; }
+    else if (shape === 'barra') { width = 256; height = 64; defaultName = "ZONA BARRA"; capacity = 0; }
+    else if (shape === 'pared') { width = 256; height = 16; defaultName = "PARED"; capacity = 0; }
+    else if (shape === 'puerta') { width = 96; height = 16; defaultName = "PUERTA"; capacity = 0; }
+    else if (shape === 'terraza') { width = 256; height = 256; defaultName = "ZONA TERRAZA"; capacity = 0; }
 
     const newTable: Table = {
       id: crypto.randomUUID(), // Assuming DB accepts UUID
-      name: `Mesa ${tables.length + 1}`,
-      capacity: shape === 'circle' ? 2 : 4,
+      name: defaultName,
+      capacity: capacity,
       shape: shape as any,
       status: "free",
       x: snappedX,
@@ -288,11 +296,17 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
               <section>
                 <p className="text-[10px] uppercase tracking-widest font-black text-stone-400 mb-4 px-1">Infraestructura</p>
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all">
+                  <div 
+                    draggable onDragStart={(e) => handleDragStart(e, 'pared')}
+                    className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all"
+                  >
                     <span className="material-symbols-outlined text-stone-600 text-xl pl-2">horizontal_rule</span>
                     <span className="text-xs font-bold text-stone-600">Pared</span>
                   </div>
-                  <div className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all">
+                  <div 
+                    draggable onDragStart={(e) => handleDragStart(e, 'puerta')}
+                    className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all"
+                  >
                     <span className="material-symbols-outlined text-stone-600 text-xl pl-2">door_open</span>
                     <span className="text-xs font-bold text-stone-600">Puerta / Entrada</span>
                   </div>
@@ -300,7 +314,7 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
                     <span className="material-symbols-outlined text-stone-600 text-xl pl-2">liquor</span>
                     <span className="text-xs font-bold text-stone-600">Zona Barra</span>
                   </div>
-                  <div className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all">
+                  <div className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all" draggable onDragStart={(e) => handleDragStart(e, 'terraza')}>
                     <span className="material-symbols-outlined text-stone-600 text-xl pl-2">deck</span>
                     <span className="text-xs font-bold text-stone-600">Terraza</span>
                   </div>
@@ -313,11 +327,20 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
         {/* Center Canvas */}
         <section 
           className="flex-1 bg-stone-100/50 p-10 overflow-auto flex items-center justify-center relative min-h-0"
-          onClick={() => setSelectedTableId(null)}
+          onPointerDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedTableId(null);
+            }
+          }}
         >
           <div 
             ref={canvasRef}
             className="w-[1240px] h-[1000px] bg-white rounded-xl relative shadow-sm border border-stone-200"
+            onPointerDown={(e) => {
+              if (e.target === e.currentTarget) {
+                setSelectedTableId(null);
+              }
+            }}
             style={{ 
                 backgroundImage: 'radial-gradient(#e5e5e5 2px, transparent 2px)', 
                 backgroundSize: '32px 32px' 
@@ -330,7 +353,7 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
               const isCircle = table.shape === "circle";
               const isBarra = table.shape === "barra";
               
-              if (isBarra) {
+              if (isBarra || table.shape === 'terraza') {
                  return (
                    <div 
                      key={table.id}
@@ -338,7 +361,7 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
                      className={`absolute flex items-center justify-center font-bold transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5 z-20' : 'bg-transparent border-2 border-dashed border-stone-300 text-stone-400 z-10'} cursor-move hover:border-stone-400 select-none rounded-3xl`}
                      style={{ left: table.x, top: table.y, width: table.w, height: table.h }}
                    >
-                     <span className="uppercase tracking-widest text-xs opacity-50 font-black px-8 text-center">{table.name || "ZONA DE BARRA"}</span>
+                     <span className="uppercase tracking-widest text-[10px] md:text-xs opacity-50 font-black px-4 text-center break-words">{table.name || (isBarra ? "ZONA DE BARRA" : "ZONA TERRAZA")}</span>
                      
                      {/* Resize handles */}
                      {isSelected && (
@@ -351,6 +374,39 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
                      )}
                    </div>
                  );
+              }
+
+              if (table.shape === 'pared' || table.shape === 'puerta') {
+                  const isPuerta = table.shape === 'puerta';
+                  return (
+                    <div 
+                      key={table.id}
+                      onPointerDown={(e) => handlePointerDownMove(e, table.id)}
+                      className={`absolute flex items-center justify-center transition-all ${isSelected ? 'ring-2 ring-primary z-20' : 'z-10'} cursor-move select-none`}
+                      style={{ 
+                          left: table.x, 
+                          top: table.y, 
+                          width: table.w, 
+                          height: table.h,
+                          backgroundColor: isPuerta ? 'transparent' : '#a8a29e', // stone-400 for pared
+                          backgroundImage: isPuerta ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(168, 162, 158, 0.4) 10px, rgba(168, 162, 158, 0.4) 20px)' : 'none',
+                          borderRadius: '8px'
+                      }}
+                    >
+                      {/* Name optionally shown on hover or when selected if needed, otherwise hidden for clean layout */}
+                      {isSelected && (
+                          <span className="absolute -top-6 text-[10px] font-bold text-stone-400 uppercase tracking-wider bg-white/80 px-2 py-0.5 rounded">{table.name}</span>
+                      )}
+
+                      {/* Resize handles */}
+                      {isSelected && (
+                          <>
+                            <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'w')} className="absolute top-1/2 -left-2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-ew-resize"></div>
+                            <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'e')} className="absolute top-1/2 -right-2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-ew-resize"></div>
+                          </>
+                      )}
+                    </div>
+                  );
               }
 
               return (
