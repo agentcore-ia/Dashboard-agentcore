@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Table } from "./PlanoView";
 
@@ -10,8 +10,10 @@ interface EditorPlanoViewProps {
 
 export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
   const [tables, setTables] = useState<Table[]>([]);
+  const [deletedTableIds, setDeletedTableIds] = useState<string[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchTables = async () => {
@@ -23,14 +25,59 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
 
   const selectedTable = tables.find(t => t.id === selectedTableId);
 
-  const handlePointerDown = (e: React.PointerEvent, id: string) => {
+  // -- Drag & Drop from Sidebar --
+  const handleDragStart = (e: React.DragEvent, shapeCode: string) => {
+    e.dataTransfer.setData("shape", shapeCode);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const shape = e.dataTransfer.getData("shape");
+    if (!shape) return;
+
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    // Calculate position inside canvas, considering scroll
+    const x = e.clientX - rect.left + (canvasRef.current?.scrollLeft || 0);
+    const y = e.clientY - rect.top + (canvasRef.current?.scrollTop || 0);
+
+    const snap = 32;
+    const snappedX = Math.round(x / snap) * snap;
+    const snappedY = Math.round(y / snap) * snap;
+
+    const width = shape === 'rectangle' ? 128 : shape === 'barra' ? 256 : 96;
+    const height = shape === 'barra' ? 64 : 96;
+
+    const newTable: Table = {
+      id: crypto.randomUUID(), // Assuming DB accepts UUID
+      name: `Mesa ${tables.length + 1}`,
+      capacity: shape === 'circle' ? 2 : 4,
+      shape: shape as any,
+      status: "free",
+      x: snappedX,
+      y: snappedY,
+      w: width,
+      h: height,
+      zone: "Interior"
+    };
+    
+    setTables(prev => [...prev, newTable]);
+    setSelectedTableId(newTable.id);
+  };
+
+  // -- Moving an existing table --
+  const handlePointerDownMove = (e: React.PointerEvent, id: string) => {
     e.stopPropagation();
+    if (e.button !== 0) return; // Only left click
     setSelectedTableId(id);
+
     const table = tables.find(t => t.id === id);
     if (!table) return;
-
-    // We only want to drag with left click
-    if (e.button !== 0) return;
 
     const startX = e.clientX;
     const startY = e.clientY;
@@ -39,7 +86,6 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
     const onPointerMove = (ev: PointerEvent) => {
         const dx = ev.clientX - startX;
         const dy = ev.clientY - startY;
-        // Snap to grid of 32px
         const snap = 32;
         const newX = Math.max(0, Math.round((initialT.x + dx) / snap) * snap);
         const newY = Math.max(0, Math.round((initialT.y + dy) / snap) * snap);
@@ -56,6 +102,86 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
     window.addEventListener('pointerup', onPointerUp);
   };
 
+  // -- Resize Handler --
+  const handleResizePointerDown = (e: React.PointerEvent, id: string, corner: string) => {
+    e.stopPropagation();
+    if (e.button !== 0) return;
+
+    const table = tables.find(t => t.id === id);
+    if (!table) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const initialT = { x: table.x, y: table.y, w: table.w, h: table.h };
+    const snap = 32;
+
+    const onPointerMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        
+        let newX = initialT.x;
+        let newY = initialT.y;
+        let newW = initialT.w;
+        let newH = initialT.h;
+
+        if (corner.includes('e')) newW = Math.max(snap, Math.round((initialT.w + dx) / snap) * snap);
+        if (corner.includes('s')) newH = Math.max(snap, Math.round((initialT.h + dy) / snap) * snap);
+        
+        if (corner.includes('w')) {
+            const potentialW = Math.max(snap, Math.round((initialT.w - dx) / snap) * snap);
+            if (potentialW !== initialT.w) {
+                newX = initialT.x + (initialT.w - potentialW);
+                newW = potentialW;
+            }
+        }
+        
+        if (corner.includes('n')) {
+            const potentialH = Math.max(snap, Math.round((initialT.h - dy) / snap) * snap);
+            if (potentialH !== initialT.h) {
+                newY = initialT.y + (initialT.h - potentialH);
+                newH = potentialH;
+            }
+        }
+
+        setTables(prev => prev.map(t => t.id === id ? { ...t, x: newX, y: newY, w: newW, h: newH } : t));
+    };
+
+    const onPointerUp = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  // -- Quick Actions --
+  const handleDuplicate = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!selectedTable) return;
+    const newTable: Table = {
+      ...selectedTable,
+      id: crypto.randomUUID(),
+      name: `${selectedTable.name} (Copia)`,
+      x: selectedTable.x + 32,
+      y: selectedTable.y + 32,
+    };
+    setTables(prev => [...prev, newTable]);
+    setSelectedTableId(newTable.id);
+  };
+
+  const handleRotate = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!selectedTable) return;
+    setTables(prev => prev.map(t => t.id === selectedTable.id ? { ...t, w: t.h, h: t.w } : t));
+  };
+
+  const handleDelete = (id: string) => {
+    setTables(prev => prev.filter(t => t.id !== id));
+    setDeletedTableIds(prev => [...prev, id]);
+    if (selectedTableId === id) setSelectedTableId(null);
+  };
+
   const updateSelectedField = (field: keyof Table, value: any) => {
     if (!selectedTableId) return;
     setTables(prev => prev.map(t => t.id === selectedTableId ? { ...t, [field]: value } : t));
@@ -63,71 +189,121 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
 
   const saveChanges = async () => {
     setIsSaving(true);
-    // update all tables
-    const promises = tables.map(t => supabase.from('mesas').update({ 
-        x: t.x, y: t.y, w: t.w, h: t.h, 
-        name: t.name, capacity: t.capacity, zone: t.zone
-    }).eq('id', t.id));
     
-    await Promise.all(promises);
+    try {
+      // 1. Delete removed tables
+      if (deletedTableIds.length > 0) {
+        await supabase.from('mesas').delete().in('id', deletedTableIds);
+      }
+
+      // 2. Upsert/Update remaining tables
+      const promises = tables.map(t => supabase.from('mesas').upsert({ 
+          id: t.id,
+          x: t.x, y: t.y, w: t.w, h: t.h, 
+          name: t.name, capacity: t.capacity, zone: t.zone, shape: t.shape,
+          status: t.status 
+      }, { onConflict: 'id' }));
+      
+      await Promise.all(promises);
+    } catch(err) {
+      console.error(err);
+    }
+
     setIsSaving(false);
     onClose();
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-surface text-on-surface animate-in fade-in zoom-in-95 duration-200">
+    <div className="flex flex-col h-screen w-full bg-[#fdfaf7] text-stone-800 animate-in fade-in zoom-in-95 duration-200">
       {/* TopNavBar */}
-      <header className="w-full bg-stone-50/80 backdrop-blur-md shadow-sm z-50 flex justify-between items-center px-6 py-3 border-b border-stone-200">
+      <header className="w-full bg-[#fdfaf7] z-50 flex justify-between items-center px-6 py-4 border-b border-stone-200 shadow-sm">
         <div className="flex items-center gap-4">
-          <span className="text-xl font-bold text-red-800 font-headline">Orden Pilot</span>
-          <div className="h-6 w-px bg-stone-200 mx-2"></div>
-          <h1 className="font-headline font-bold text-stone-800 text-lg tracking-tight">Editor de Plano</h1>
+          <span className="text-2xl font-black text-primary font-headline tracking-tight">Orden Pilot</span>
+          <div className="h-6 w-px bg-stone-300 mx-1"></div>
+          <h1 className="font-headline font-extrabold text-stone-900 text-lg tracking-tight">Editor de Plano</h1>
         </div>
         <nav className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 text-stone-500 hover:bg-stone-100 transition-colors rounded-full text-sm font-semibold">
-            <span className="material-symbols-outlined text-sm">undo</span>
+          <button className="flex items-center gap-2 px-3 py-2 text-stone-500 hover:text-stone-800 transition-colors rounded-full text-xs font-bold">
+            <span className="material-symbols-outlined text-[16px]">undo</span>
             <span>Deshacer</span>
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 text-stone-500 hover:bg-stone-100 transition-colors rounded-full text-sm font-semibold">
-            <span className="material-symbols-outlined text-sm">redo</span>
+          <button className="flex items-center gap-2 px-3 py-2 text-stone-500 hover:text-stone-800 transition-colors rounded-full text-xs font-bold">
+            <span className="material-symbols-outlined text-[16px]">redo</span>
             <span>Rehacer</span>
           </button>
-          <div className="flex items-center bg-stone-100 border border-stone-200 rounded-full px-2 mx-2">
-            <button className="p-2 text-stone-500 hover:text-primary transition-colors"><span className="material-symbols-outlined text-[18px]">remove_circle_outline</span></button>
-            <span className="px-2 font-bold text-xs text-stone-700">85%</span>
-            <button className="p-2 text-stone-500 hover:text-primary transition-colors"><span className="material-symbols-outlined text-[18px]">add_circle_outline</span></button>
+          <div className="flex items-center bg-stone-200/50 rounded-full px-2 mx-4 h-10 border border-stone-200">
+            <button className="p-1 text-stone-600 hover:text-stone-900 transition-colors"><span className="material-symbols-outlined text-[18px]">remove</span></button>
+            <span className="px-3 font-extrabold text-xs text-stone-800">85%</span>
+            <button className="p-1 text-stone-600 hover:text-stone-900 transition-colors"><span className="material-symbols-outlined text-[18px]">add</span></button>
           </div>
-          <button onClick={saveChanges} disabled={isSaving} className="px-6 py-2 bg-primary text-white rounded-full text-sm font-bold shadow-md hover:bg-primary-container active:scale-95 transition-all disabled:opacity-50">
-            {isSaving ? "Guardando..." : "Guardar Plano"}
+          <button onClick={saveChanges} disabled={isSaving} className="px-6 py-2.5 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary-container active:scale-95 transition-all disabled:opacity-50">
+            {isSaving ? "Guardando..." : "Guardar"}
           </button>
         </nav>
       </header>
 
       <main className="flex-1 flex min-h-0 relative">
         {/* Left Panel: Elements */}
-        <aside className="w-72 bg-stone-50 border-r border-stone-200 flex flex-col py-6 px-4 gap-6 overflow-y-auto shrink-0 z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        <aside className="w-[300px] bg-[#fdfaf7] border-r border-stone-200 flex flex-col py-8 px-6 gap-8 overflow-y-auto shrink-0 z-10">
           <div>
-            <h2 className="font-headline text-lg font-extrabold text-stone-800 mb-4 px-2">Elementos</h2>
-            <div className="space-y-6">
+            <h2 className="font-headline text-lg font-black text-stone-900 mb-6 font-bold">Elementos</h2>
+            
+            <div className="space-y-8">
+              {/* Tables Section */}
               <section>
-                <p className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-3 px-2">Mesas</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <button className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-stone-200 hover:border-primary/50 hover:shadow-sm transition-all group shadow-sm">
-                    <span className="material-symbols-outlined text-[28px] mb-2 text-stone-400 group-hover:text-primary transition-colors">square_foot</span>
-                    <span className="text-xs font-semibold text-stone-700">Cuadrada</span>
-                  </button>
-                  <button className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-stone-200 hover:border-primary/50 hover:shadow-sm transition-all group shadow-sm">
-                    <span className="material-symbols-outlined text-[28px] mb-2 text-stone-400 group-hover:text-primary transition-colors">radio_button_unchecked</span>
-                    <span className="text-xs font-semibold text-stone-700">Redonda</span>
-                  </button>
-                  <button className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-stone-200 hover:border-primary/50 hover:shadow-sm transition-all group shadow-sm">
-                    <span className="material-symbols-outlined text-[28px] mb-2 text-stone-400 group-hover:text-primary transition-colors">rectangle</span>
-                    <span className="text-xs font-semibold text-stone-700">Familiar</span>
-                  </button>
-                  <button className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-stone-200 hover:border-primary/50 hover:shadow-sm transition-all group shadow-sm">
-                    <span className="material-symbols-outlined text-[28px] mb-2 text-stone-400 group-hover:text-primary transition-colors">table_restaurant</span>
-                    <span className="text-xs font-semibold text-stone-700">Alta</span>
-                  </button>
+                <p className="text-[10px] uppercase tracking-widest font-black text-stone-400 mb-4 px-1">Mesas</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div 
+                    className="flex flex-col items-center justify-center p-5 bg-white rounded-3xl border border-stone-200 hover:border-stone-300 hover:shadow-md transition-all cursor-grab active:cursor-grabbing shadow-sm"
+                    draggable onDragStart={(e) => handleDragStart(e, 'square')}
+                  >
+                    <span className="material-symbols-outlined text-4xl mb-3 text-stone-600">square_foot</span>
+                    <span className="text-[11px] font-bold text-stone-600">Cuadrada</span>
+                  </div>
+                  <div 
+                    className="flex flex-col items-center justify-center p-5 bg-white rounded-3xl border border-stone-200 hover:border-stone-300 hover:shadow-md transition-all cursor-grab active:cursor-grabbing shadow-sm"
+                    draggable onDragStart={(e) => handleDragStart(e, 'circle')}
+                  >
+                    <span className="material-symbols-outlined text-4xl mb-3 text-stone-600">radio_button_unchecked</span>
+                    <span className="text-[11px] font-bold text-stone-600">Redonda</span>
+                  </div>
+                  <div 
+                    className="flex flex-col items-center justify-center p-5 bg-white rounded-3xl border border-stone-200 hover:border-stone-300 hover:shadow-md transition-all cursor-grab active:cursor-grabbing shadow-sm"
+                    draggable onDragStart={(e) => handleDragStart(e, 'rectangle')}
+                  >
+                    <span className="material-symbols-outlined text-4xl mb-3 text-stone-600">rectangle</span>
+                    <span className="text-[11px] font-bold text-stone-600">Familiar</span>
+                  </div>
+                  <div 
+                    className="flex flex-col items-center justify-center p-5 bg-white rounded-3xl border border-stone-200 hover:border-stone-300 hover:shadow-md transition-all cursor-grab active:cursor-grabbing shadow-sm"
+                    draggable onDragStart={(e) => handleDragStart(e, 'tall')}
+                  >
+                    <span className="material-symbols-outlined text-4xl mb-3 text-stone-600">table_restaurant</span>
+                    <span className="text-[11px] font-bold text-stone-600">Alta</span>
+                  </div>
+                </div>
+              </section>
+
+              {/* Infrastructure Section */}
+              <section>
+                <p className="text-[10px] uppercase tracking-widest font-black text-stone-400 mb-4 px-1">Infraestructura</p>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all">
+                    <span className="material-symbols-outlined text-stone-600 text-xl pl-2">horizontal_rule</span>
+                    <span className="text-xs font-bold text-stone-600">Pared</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all">
+                    <span className="material-symbols-outlined text-stone-600 text-xl pl-2">door_open</span>
+                    <span className="text-xs font-bold text-stone-600">Puerta / Entrada</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all" draggable onDragStart={(e) => handleDragStart(e, 'barra')}>
+                    <span className="material-symbols-outlined text-stone-600 text-xl pl-2">liquor</span>
+                    <span className="text-xs font-bold text-stone-600">Zona Barra</span>
+                  </div>
+                  <div className="flex items-center gap-4 p-4 bg-white rounded-full border border-stone-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all">
+                    <span className="material-symbols-outlined text-stone-600 text-xl pl-2">deck</span>
+                    <span className="text-xs font-bold text-stone-600">Terraza</span>
+                  </div>
                 </div>
               </section>
             </div>
@@ -136,12 +312,19 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
 
         {/* Center Canvas */}
         <section 
-          className="flex-1 bg-stone-100/50 p-8 overflow-auto flex items-center justify-center relative cursor-crosshair min-h-0"
+          className="flex-1 bg-stone-100/50 p-10 overflow-auto flex items-center justify-center relative min-h-0"
           onClick={() => setSelectedTableId(null)}
         >
-          <div className="w-[1200px] h-[800px] bg-white rounded-2xl relative overflow-hidden shadow-[0_12px_40px_rgba(0,0,0,0.06)] border border-stone-200"
-               style={{ backgroundImage: 'radial-gradient(#d1cfca 1px, transparent 1px)', backgroundSize: '32px 32px' }}>
-            
+          <div 
+            ref={canvasRef}
+            className="w-[1240px] h-[1000px] bg-white rounded-xl relative shadow-sm border border-stone-200"
+            style={{ 
+                backgroundImage: 'radial-gradient(#e5e5e5 2px, transparent 2px)', 
+                backgroundSize: '32px 32px' 
+            }}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
             {tables.map(table => {
               const isSelected = selectedTableId === table.id;
               const isCircle = table.shape === "circle";
@@ -151,11 +334,21 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
                  return (
                    <div 
                      key={table.id}
-                     onPointerDown={(e) => handlePointerDown(e, table.id)}
-                     className={`absolute flex items-center justify-center font-bold transition-shadow ${isSelected ? 'ring-2 ring-primary bg-primary/5 shadow-md z-20' : 'bg-stone-50 border-2 border-stone-200 text-stone-400 z-10'} cursor-move hover:border-primary/50 select-none`}
+                     onPointerDown={(e) => handlePointerDownMove(e, table.id)}
+                     className={`absolute flex items-center justify-center font-bold transition-all ${isSelected ? 'ring-2 ring-primary bg-primary/5 z-20' : 'bg-transparent border-2 border-dashed border-stone-300 text-stone-400 z-10'} cursor-move hover:border-stone-400 select-none rounded-3xl`}
                      style={{ left: table.x, top: table.y, width: table.w, height: table.h }}
                    >
-                     <span className="uppercase tracking-widest text-xs opacity-50">{table.name}</span>
+                     <span className="uppercase tracking-widest text-xs opacity-50 font-black px-8 text-center">{table.name || "ZONA DE BARRA"}</span>
+                     
+                     {/* Resize handles */}
+                     {isSelected && (
+                         <>
+                           <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'nw')} className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nwse-resize"></div>
+                           <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'ne')} className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nesw-resize"></div>
+                           <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'sw')} className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nesw-resize"></div>
+                           <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'se')} className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nwse-resize"></div>
+                         </>
+                     )}
                    </div>
                  );
               }
@@ -163,87 +356,119 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
               return (
                 <div 
                   key={table.id}
-                  onPointerDown={(e) => handlePointerDown(e, table.id)}
-                  className={`absolute flex items-center justify-center font-bold text-lg ${isCircle ? "rounded-full" : "rounded-xl"} ${
-                    isSelected 
-                      ? 'bg-primary/10 border-4 border-primary text-primary shadow-[0_0_20px_rgba(158,32,22,0.15)] z-20 scale-100' 
-                      : 'bg-white border-2 border-stone-300 text-stone-500 z-10 scale-95 hover:border-stone-400 hover:scale-100'
-                  } transition-[background-color,border-color,box-shadow,transform] duration-75 cursor-move select-none`}
+                  className="absolute"
                   style={{ left: table.x, top: table.y, width: table.w, height: table.h }}
                 >
-                  {table.name}
+                  <div 
+                    onPointerDown={(e) => handlePointerDownMove(e, table.id)}
+                    className={`w-full h-full flex items-center justify-center font-bold text-sm ${isCircle ? "rounded-full" : "rounded-[24px]"} ${
+                      isSelected 
+                        ? 'bg-primary/5 border-[3px] border-primary text-primary shadow-[0_0_20px_rgba(158,32,22,0.15)] z-20' 
+                        : 'bg-[#e9e8e5] border-0 text-stone-600 z-10 hover:bg-[#dfddda]'
+                    } transition-all duration-75 cursor-move select-none`}
+                  >
+                    {table.name}
+                  </div>
+
+                  {isSelected && (
+                      <>
+                        {/* Corner Handles */}
+                        <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'nw')} className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nwse-resize z-30"></div>
+                        <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'ne')} className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nesw-resize z-30"></div>
+                        <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'sw')} className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nesw-resize z-30"></div>
+                        <div onPointerDown={(e) => handleResizePointerDown(e, table.id, 'se')} className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-primary rounded-full cursor-nwse-resize z-30"></div>
+                        
+                        {/* Floating Action Menu attached strictly to the element */}
+                        <div className="absolute top-[100%] left-1/2 -translate-x-1/2 mt-3 bg-stone-800 text-stone-300 rounded-full flex gap-3 px-4 py-2.5 z-40 shadow-xl border border-stone-700/50">
+                           <button onClick={handleDuplicate} className="hover:text-white transition-colors flex items-center" title="Duplicar"><span className="material-symbols-outlined text-[16px]">content_copy</span></button>
+                           <button onClick={handleRotate} className="hover:text-white transition-colors flex items-center" title="Rotar"><span className="material-symbols-outlined text-[16px]">cached</span></button>
+                           <button onClick={() => handleDelete(table.id)} className="hover:text-white transition-colors flex items-center" title="Eliminar"><span className="material-symbols-outlined text-[16px]">delete</span></button>
+                        </div>
+                      </>
+                  )}
                 </div>
               );
             })}
 
-            {/* Helper grid numbers (Decorative) */}
-            <div className="absolute bottom-4 left-4 text-[10px] text-stone-300 font-mono font-bold tracking-widest shadow-sm pointer-events-none">
-               GRID 32px
+            {/* Coordinates overlay helper */}
+            <div className="absolute bottom-6 left-6 text-[10px] text-stone-400 font-mono font-bold tracking-widest pointer-events-none">
+               .X: {selectedTable?.x || 0} Y: {selectedTable?.y || 0}
             </div>
           </div>
         </section>
 
         {/* Right Panel: Settings */}
-        <aside className="w-80 bg-stone-50 border-l border-stone-200 flex flex-col py-6 px-6 gap-8 overflow-y-auto shrink-0 z-10 shadow-[-4px_0_24px_rgba(0,0,0,0.02)]">
+        <aside className="w-[360px] bg-[#fdfaf7] border-l border-stone-200 flex flex-col py-8 px-6 gap-6 overflow-y-auto shrink-0 z-10">
           {selectedTable ? (
             <div className="animate-in fade-in slide-in-from-right-2">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="font-headline text-lg font-extrabold text-stone-800">{selectedTable.name}</h2>
-                <span className="px-2 py-1 bg-primary/10 text-primary border border-primary/20 text-[10px] font-black rounded-full tracking-widest uppercase">Select</span>
+                <h2 className="font-headline text-2xl font-black text-stone-900">{selectedTable.name}</h2>
+                <span className="px-3 py-1 bg-primary text-white text-[10px] font-bold rounded-full tracking-wider uppercase">SELECCIONADA</span>
               </div>
-              <p className="text-xs text-stone-500 mb-6 pb-4 border-b border-stone-200 font-medium">Ajusta los detalles de la mesa.</p>
+              <p className="text-xs text-stone-600 mb-8 pb-6 border-b border-stone-200 font-medium">Ajusta los detalles del elemento seleccionado.</p>
               
-              <div className="space-y-6">
+              <div className="space-y-8">
                 <div>
-                  <label className="block text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-2 ml-1">Identificador</label>
+                  <label className="block text-[11px] font-black text-stone-800 mb-2 ml-1">Identificador</label>
                   <input 
-                    className="w-full bg-white border border-stone-200 shadow-sm rounded-xl focus:ring-2 focus:border-primary focus:ring-primary/20 hover:border-stone-300 py-3 px-4 font-black tracking-tight text-stone-800 transition-all outline-none" 
+                    className="w-full bg-white border border-stone-200 shadow-sm rounded-xl py-4 px-4 font-bold text-lg text-stone-900 transition-all outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 hover:border-stone-300"
                     type="text" 
                     value={selectedTable.name}
                     onChange={(e) => updateSelectedField("name", e.target.value)}
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-2 ml-1">Capacidad (Pax)</label>
+                  <label className="block text-[11px] font-black text-stone-800 mb-2 ml-1">Capacidad (Personas)</label>
                   <div className="flex items-center bg-white border border-stone-200 shadow-sm rounded-xl overflow-hidden hover:border-stone-300 transition-all">
                     <button 
                       onClick={() => updateSelectedField("capacity", Math.max(1, selectedTable.capacity - 1))}
-                      className="p-3 text-primary hover:bg-stone-50 transition-colors"
+                      className="p-5 text-primary hover:bg-stone-50 transition-colors"
                     >
-                      <span className="material-symbols-outlined text-[20px]">remove</span>
+                      <span className="material-symbols-outlined text-[20px] font-bold">remove</span>
                     </button>
                     <input 
-                      className="w-full text-center border-0 bg-transparent py-3 font-black text-xl tracking-tighter focus:ring-0 text-stone-800 outline-none" 
+                      className="w-full text-center border-0 bg-transparent py-4 font-black text-2xl tracking-tighter focus:ring-0 text-stone-800 outline-none" 
                       type="number" 
                       value={selectedTable.capacity} 
                       onChange={(e) => updateSelectedField("capacity", parseInt(e.target.value) || 1)}
                     />
                     <button 
                       onClick={() => updateSelectedField("capacity", selectedTable.capacity + 1)}
-                      className="p-3 text-primary hover:bg-stone-50 transition-colors"
+                      className="p-5 text-primary hover:bg-stone-50 transition-colors"
                     >
-                      <span className="material-symbols-outlined text-[20px]">add</span>
+                      <span className="material-symbols-outlined text-[20px] font-bold">add</span>
                     </button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-2 ml-1">Zona Asignada</label>
+                  <label className="block text-[11px] font-black text-stone-800 mb-2 ml-1">Zona Asignada</label>
                   <div className="relative">
                     <select 
                       value={selectedTable.zone || "Interior"}
                       onChange={(e) => updateSelectedField("zone", e.target.value)}
-                      className="w-full bg-white border border-stone-200 shadow-sm rounded-xl focus:ring-2 focus:border-primary focus:ring-primary/20 hover:border-stone-300 py-3 px-4 font-bold text-stone-800 appearance-none transition-all outline-none"
+                      className="w-full bg-white border border-stone-200 shadow-sm rounded-xl py-4 px-4 font-bold text-lg text-stone-900 appearance-none transition-all outline-none focus:ring-2 focus:border-primary focus:ring-primary/20 hover:border-stone-300"
                     >
                       <option value="Interior">Interior</option>
                       <option value="Terraza">Terraza</option>
                       <option value="Barra">Barra</option>
                     </select>
-                    <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none">expand_content</span>
+                    <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none">expand_more</span>
                   </div>
                 </div>
                 
-                <div className="pt-6 border-t border-stone-200">
-                  <button className="w-full flex items-center justify-center gap-2 py-3 text-red-600 bg-red-50 border border-red-100 rounded-xl hover:bg-red-100 hover:border-red-200 transition-all text-sm font-bold shadow-sm">
+                <div className="pt-6">
+                  <p className="text-[10px] uppercase tracking-widest font-black text-stone-400 mb-4 ml-1">ACCIONES RÁPIDAS</p>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                      <button onClick={handleDuplicate} className="flex items-center justify-center gap-2 py-4 bg-stone-100 rounded-full font-bold text-sm text-stone-700 hover:bg-stone-200 transition-colors">
+                          <span className="material-symbols-outlined text-[18px]">content_copy</span>
+                          Duplicar
+                      </button>
+                      <button onClick={handleRotate} className="flex items-center justify-center gap-2 py-4 bg-stone-100 rounded-full font-bold text-sm text-stone-700 hover:bg-stone-200 transition-colors">
+                          <span className="material-symbols-outlined text-[18px]">cached</span>
+                          Rotar
+                      </button>
+                  </div>
+                  <button onClick={() => handleDelete(selectedTable.id)} className="w-full flex items-center justify-center gap-2 py-4 text-primary bg-primary/5 rounded-full hover:bg-primary/10 transition-all text-sm font-bold">
                     <span className="material-symbols-outlined text-[18px]">delete</span>
                     Eliminar Mesa
                   </button>
@@ -258,12 +483,12 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
           )}
 
           {/* Contextual Help */}
-          <div className="mt-auto p-4 bg-orange-50/80 rounded-xl border border-orange-100">
-            <div className="flex items-start gap-3">
-              <span className="material-symbols-outlined text-orange-500 text-[20px]">lightbulb</span>
-              <p className="text-[11px] text-orange-900 leading-relaxed font-medium">
+          <div className="mt-auto p-5 bg-primary/5 rounded-2xl">
+            <div className="flex items-start gap-4">
+              <span className="material-symbols-outlined text-primary text-[20px] mt-0.5 font-bold">lightbulb</span>
+              <p className="text-xs text-primary leading-relaxed font-medium">
                 <strong className="block mb-1 font-bold">Consejo:</strong> 
-                Arrastra los elementos desde el panel central. Las posiciones se encajarán automáticamente en la cuadrícula de 32px.
+                Arrastra los elementos desde el panel izquierdo para añadirlos al plano. Puedes agrupar mesas seleccionando varias a la vez.
               </p>
             </div>
           </div>
@@ -271,13 +496,12 @@ export default function EditorPlanoView({ onClose }: EditorPlanoViewProps) {
       </main>
       
       {/* Footer Action Bar */}
-      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-stone-900/95 backdrop-blur-xl px-2 py-2 pr-6 rounded-full shadow-2xl border border-stone-800/50 z-[100]">
-        <button onClick={onClose} className="text-stone-300 font-bold tracking-tight text-sm px-6 py-2 hover:text-white hover:bg-stone-800 rounded-full transition-colors h-10 flex items-center">
-          Cancelar
+      <footer className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center justify-between bg-white px-2 py-2 pl-6 rounded-full shadow-2xl border border-stone-200 z-[100] gap-8 min-w-[400px]">
+        <button onClick={onClose} className="text-stone-500 font-bold tracking-tight text-sm px-2 hover:text-stone-800 transition-colors">
+          Cancelar cambios
         </button>
-        <button onClick={saveChanges} disabled={isSaving} className="px-8 h-10 bg-primary text-white rounded-full font-extrabold text-sm shadow-[0_0_15px_rgba(158,32,22,0.4)] hover:bg-primary-container hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50">
-          <span className="material-symbols-outlined text-[18px]">check</span>
-          {isSaving ? "Guardando..." : "Guardar Cambios"}
+        <button onClick={saveChanges} disabled={isSaving} className="px-8 py-3 bg-[#a81e14] text-white rounded-full font-bold text-sm shadow-md hover:bg-[#8f1911] active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50">
+          {isSaving ? "Guardando..." : "Finalizar Diseño"}
         </button>
       </footer>
     </div>
