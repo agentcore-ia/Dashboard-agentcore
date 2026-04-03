@@ -38,7 +38,7 @@ export default function RootLayout({
           {/* Main Sidebar */}
           <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
           
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:pl-64">
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden lg:pl-[200px]">
              {/* Mobile Header (Shows only on small screens) */}
              <header className="lg:hidden flex justify-between items-center h-16 px-4 bg-white/80 backdrop-blur-md border-b border-stone-100 z-30">
               <button 
