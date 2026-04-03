@@ -114,101 +114,143 @@ export default function PlanoView() {
 
       <div className="flex gap-6 min-h-[500px] h-[65vh] relative w-full">
         {/* Floor Plan Area */}
-        <div className="flex-1 bg-surface-container rounded-2xl relative overflow-auto border border-stone-200 shadow-inner"
-             style={{ backgroundImage: 'radial-gradient(#e6e2dc 1px, transparent 1px)', backgroundSize: '32px 32px' }}
-             onClick={() => setSelectedTableId(null)}
+        <div className="flex-1 bg-surface-container rounded-2xl overflow-auto border border-stone-200 shadow-inner custom-scrollbar relative"
+             onPointerDown={(e) => {
+               if (e.target === e.currentTarget || (e.target as HTMLElement).id === "plano-canvas") {
+                 setSelectedTableId(null);
+               }
+             }}
         >
-          {tables.map(table => {
-            const isSelected = selectedTableId === table.id;
-            let themeBase = "";
-            let themeBorder = "";
-            let labelBadge = "";
-            
-            if (table.status === "free") {
-              themeBase = "bg-tertiary text-white";
-              themeBorder = "border-tertiary/40";
-              labelBadge = "Libre";
-            } else if (table.status === "occupied") {
-              themeBase = "bg-primary text-white";
-              themeBorder = isSelected ? "border-primary-container" : "border-primary";
-              labelBadge = "Ocupada";
-            } else if (table.status === "reserved") {
-              themeBase = "bg-secondary text-white";
-              themeBorder = "border-secondary";
-              labelBadge = "Reservada";
-            }
+          <div 
+             id="plano-canvas"
+             className="w-[1240px] h-[1000px] relative pointer-events-auto"
+             style={{ backgroundImage: 'radial-gradient(#e6e2dc 1px, transparent 1px)', backgroundSize: '32px 32px' }}
+          >
+            {tables.map(table => {
+              const isSelected = selectedTableId === table.id;
+              
+              // --- Infraestructura rendering ---
+              if (table.shape === 'pared' || table.shape === 'puerta') {
+                  const isPuerta = table.shape === 'puerta';
+                  return (
+                    <div 
+                      key={table.id}
+                      className={`absolute flex items-center justify-center transition-all z-0 pointer-events-none select-none`}
+                      style={{ 
+                          left: table.x, top: table.y, width: table.w, height: table.h,
+                          backgroundColor: isPuerta ? 'transparent' : '#a8a29e',
+                          backgroundImage: isPuerta ? 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(168, 162, 158, 0.4) 10px, rgba(168, 162, 158, 0.4) 20px)' : 'none',
+                          borderRadius: '8px'
+                      }}
+                    />
+                  );
+              }
 
-            const isCircle = table.shape === "circle";
-            const isBarra = table.shape === "barra";
-            
-            return (
-              <div 
-                key={table.id}
-                onClick={(e) => { e.stopPropagation(); setSelectedTableId(table.id); }}
-                className={`absolute bg-surface-container-lowest border-4 flex flex-col items-center cursor-pointer hover:shadow-md transition-all active:scale-95 ${themeBorder} ${isCircle ? "rounded-full" : "rounded-xl"} ${isSelected ? "ring-8 ring-stone-900/5 shadow-lg z-10 scale-100" : "z-0 scale-95 hover:scale-100"}`}
-                style={{ 
-                  left: `${table.x}px`, 
-                  top: `${table.y}px`, 
-                  width: `${table.w}px`, 
-                  height: `${table.h}px`,
-                  justifyContent: isBarra ? "space-between" : "center",
-                  flexDirection: isBarra ? "row" : "column",
-                  padding: isBarra ? "0 24px" : "0"
-                }}
-              >
-                <div className={`absolute -top-3 left-1/2 -translate-x-1/2 ${themeBase} text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider whitespace-nowrap shadow-sm`}>
-                  {labelBadge} {isBarra && `- ${table.name}`}
+              if (table.shape === 'terraza') {
+                  return (
+                    <div 
+                      key={table.id}
+                      className="absolute flex items-center justify-center font-bold text-stone-400 z-0 bg-transparent border-2 border-dashed border-stone-300 pointer-events-none select-none rounded-3xl"
+                      style={{ left: table.x, top: table.y, width: table.w, height: table.h }}
+                    >
+                      <span className="uppercase tracking-widest text-[10px] md:text-xs opacity-50 font-black px-4 text-center break-words">
+                        {table.name || "ZONA TERRAZA"}
+                      </span>
+                    </div>
+                  );
+              }
+
+              // --- Tables rendering ---
+              let themeBase = "";
+              let themeBorder = "";
+              let labelBadge = "";
+              
+              if (table.status === "free") {
+                themeBase = "bg-tertiary text-white";
+                themeBorder = "border-tertiary/40";
+                labelBadge = "Libre";
+              } else if (table.status === "occupied") {
+                themeBase = "bg-primary text-white";
+                themeBorder = isSelected ? "border-primary-container" : "border-primary";
+                labelBadge = "Ocupada";
+              } else if (table.status === "reserved") {
+                themeBase = "bg-secondary text-white";
+                themeBorder = "border-secondary";
+                labelBadge = "Reservada";
+              }
+
+              const isCircle = table.shape === "circle";
+              const isBarra = table.shape === "barra";
+              
+              return (
+                <div 
+                  key={table.id}
+                  onPointerDown={(e) => { e.stopPropagation(); setSelectedTableId(table.id); }}
+                  className={`absolute bg-surface-container-lowest border-4 flex flex-col items-center cursor-pointer hover:shadow-md transition-all active:scale-95 ${themeBorder} ${isCircle ? "rounded-full" : "rounded-xl"} ${isSelected ? "ring-8 ring-stone-900/5 shadow-lg z-10 scale-100" : "z-0 scale-95 hover:scale-100"}`}
+                  style={{ 
+                    left: `${table.x}px`, 
+                    top: `${table.y}px`, 
+                    width: `${table.w}px`, 
+                    height: `${table.h}px`,
+                    justifyContent: isBarra ? "space-between" : "center",
+                    flexDirection: isBarra ? "row" : "column",
+                    padding: isBarra ? "0 24px" : "0"
+                  }}
+                >
+                  <div className={`absolute -top-3 left-1/2 -translate-x-1/2 ${themeBase} text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider whitespace-nowrap shadow-sm`}>
+                    {labelBadge} {isBarra && `- ${table.name}`}
+                  </div>
+                  
+                  {isBarra ? (
+                    <>
+                      <div className="flex flex-col text-left">
+                        <p className="font-extrabold text-on-surface font-headline">{table.current_client || "Sin Asignar"}</p>
+                        <div className="flex items-center gap-1 text-on-surface-variant">
+                          <span className="material-symbols-outlined text-sm">chair_alt</span>
+                          <span className="text-xs font-semibold">Barra</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-primary">€{(table.current_bill || 0).toFixed(2)}</p>
+                        <div className="flex items-center justify-end gap-1 text-primary">
+                          <span className="material-symbols-outlined text-sm">timer</span>
+                          <span className="text-xs font-bold">{table.time_elapsed || "00:00"}</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-bold text-on-surface whitespace-nowrap">{table.name}</p>
+                      {table.status === "occupied" && (
+                        <>
+                          <p className="text-[11px] font-bold text-on-surface-variant truncate w-full text-center px-1">{table.current_client || "Sin Cliente"}</p>
+                          <div className="flex items-center gap-1 text-primary mt-1">
+                            <span className="material-symbols-outlined text-[14px]">schedule</span>
+                            <span className="text-xs font-bold">{table.time_elapsed || "00:00"}</span>
+                          </div>
+                        </>
+                      )}
+                      {table.status === "reserved" && (
+                        <>
+                          <p className="text-[11px] font-bold text-on-surface-variant truncate w-full text-center px-1">{table.current_client || "Reserva"}</p>
+                          <div className="flex items-center gap-1 text-secondary mt-1">
+                            <span className="material-symbols-outlined text-[14px]">notifications_active</span>
+                            <span className="text-xs font-bold">{table.reservation_time}</span>
+                          </div>
+                        </>
+                      )}
+                      {table.status === "free" && (
+                        <div className="flex items-center gap-1 text-on-surface-variant mt-1">
+                          <span className="material-symbols-outlined text-[14px]">groups</span>
+                          <span className="text-xs font-semibold">{table.capacity} Pax</span>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-                
-                {isBarra ? (
-                  <>
-                    <div className="flex flex-col">
-                      <p className="font-extrabold text-on-surface font-headline">{table.current_client}</p>
-                      <div className="flex items-center gap-1 text-on-surface-variant">
-                        <span className="material-symbols-outlined text-sm">chair_alt</span>
-                        <span className="text-xs font-semibold">Barra</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xl font-bold text-primary">€{table.current_bill?.toFixed(2)}</p>
-                      <div className="flex items-center justify-end gap-1 text-primary">
-                        <span className="material-symbols-outlined text-sm">timer</span>
-                        <span className="text-xs font-bold">{table.time_elapsed}</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-bold text-on-surface whitespace-nowrap">{table.name}</p>
-                    {table.status === "occupied" && (
-                      <>
-                        <p className="text-[11px] font-bold text-on-surface-variant truncate w-full text-center px-1">{table.current_client}</p>
-                        <div className="flex items-center gap-1 text-primary mt-1">
-                          <span className="material-symbols-outlined text-[14px]">schedule</span>
-                          <span className="text-xs font-bold">{table.time_elapsed}</span>
-                        </div>
-                      </>
-                    )}
-                    {table.status === "reserved" && (
-                      <>
-                        <p className="text-[11px] font-bold text-on-surface-variant truncate w-full text-center px-1">{table.current_client}</p>
-                        <div className="flex items-center gap-1 text-secondary mt-1">
-                          <span className="material-symbols-outlined text-[14px]">notifications_active</span>
-                          <span className="text-xs font-bold">{table.reservation_time}</span>
-                        </div>
-                      </>
-                    )}
-                    {table.status === "free" && (
-                      <div className="flex items-center gap-1 text-on-surface-variant mt-1">
-                        <span className="material-symbols-outlined text-[14px]">groups</span>
-                        <span className="text-xs font-semibold">{table.capacity} Pax</span>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
         {/* Right Side Detail Panel */}
