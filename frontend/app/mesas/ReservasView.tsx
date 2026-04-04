@@ -100,11 +100,16 @@ export default function ReservasView() {
       .lt("start_time", nextDateStr);
 
     if (data) {
-      const normalized = (data as Reservation[]).map(r => ({
-        ...r,
-        start_time: toHHMM(r.start_time),
-        end_time: r.end_time ? toHHMM(r.end_time) : toHHMM(r.start_time),
-      }));
+      const addMins = (hhmm: string, mins: number) => {
+        const [h, m] = hhmm.split(":").map(Number);
+        const total = (h || 0) * 60 + (m || 0) + mins;
+        return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+      };
+      const normalized = (data as Reservation[]).map(r => {
+        const st = toHHMM(r.start_time);
+        const et = r.end_time ? toHHMM(r.end_time) : addMins(st, 90);
+        return { ...r, start_time: st, end_time: et };
+      });
       setReservations(normalized);
     }
   }, [selectedDate]);
@@ -125,12 +130,15 @@ export default function ReservasView() {
   const selectedRes = reservations.find(r => r.id === selectedResId);
   const selectedTable = selectedRes ? tables.find(t => t.id === selectedRes.table_id) : null;
 
+  // Pixel-precise position: 100px per 30 min, baseline 18:00
   const getSlotPosition = (start: string, end: string) => {
-    const si = timeSlots.indexOf(start);
-    const ei = timeSlots.indexOf(end);
-    const vs = si >= 0 ? si : 0;
-    const ve = ei >= 0 ? ei : vs + 2;
-    return { left: `${vs * 100}px`, width: `${Math.max(ve - vs, 1) * 100}px` };
+    const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+    const baseMin = 18 * 60;
+    const startMin = toMin(start);
+    const endMin = toMin(end);
+    const left = Math.max(0, ((startMin - baseMin) / 30) * 100);
+    const width = Math.max(((endMin - startMin) / 30) * 100, 100);
+    return { left: `${left}px`, width: `${width}px` };
   };
 
   const updateReservationStatus = async (id: string, status: "confirmed" | "seated" | "cancelled") => {
