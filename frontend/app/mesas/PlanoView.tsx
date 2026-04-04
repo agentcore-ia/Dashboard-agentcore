@@ -112,7 +112,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const isToday = !selectedDate || selectedDate.toDateString() === new Date().toDateString();
 
   const derivedTables = tables.map(table => {
-    const res = reservations.find(r => r.table_id === table.id && r.status === 'confirmed');
+    // Find any active reservation for this table (not cancelled and not already seated)
+    const res = reservations.find(r => r.table_id === table.id && r.status !== 'cancelled' && r.status !== 'seated');
     
     // For today, if it's occupied currently, we might want to prioritize occupied state
     // But for future dates, we should always show confirmed reservations as 'reserved' 

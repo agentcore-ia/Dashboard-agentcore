@@ -16,7 +16,11 @@ interface Reservation {
   channel: "WhatsApp" | "Instagram" | "Teléfono";
 }
 
-const timeSlots = ["18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00"];
+const timeSlots = [
+  "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", 
+  "21:00", "21:30", "22:00", "22:30", "23:00", "23:30", 
+  "00:00", "00:30", "01:00", "01:30", "02:00"
+];
 
 function formatDateForQuery(date: Date): string {
   const y = date.getFullYear();
@@ -129,7 +133,11 @@ export default function ReservasView({ selectedDate, setSelectedDate }: { select
 
   // Pixel-precise position: 100px per 30 min, baseline 18:00
   const getSlotPosition = (start: string, end: string) => {
-    const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+    const toMin = (hhmm: string) => { 
+      const [h, m] = hhmm.split(":").map(Number); 
+      const adjH = h < 6 ? h + 24 : h;
+      return adjH * 60 + m; 
+    };
     const baseMin = 18 * 60;
     const startMin = toMin(start);
     const endMin = toMin(end);
@@ -247,7 +255,7 @@ export default function ReservasView({ selectedDate, setSelectedDate }: { select
           </div>
 
               {/* Grid Rows */}
-              <div className="flex flex-col relative w-[calc(144px+1100px)]">
+              <div className="flex flex-col relative w-[calc(144px+1700px)]">
 
                 {/* No reservations for this date */}
             {reservations.length === 0 && (
@@ -264,7 +272,7 @@ export default function ReservasView({ selectedDate, setSelectedDate }: { select
                       <span className="font-bold text-secondary text-sm whitespace-nowrap">Sin mesa</span>
                       <span className="text-[10px] font-bold text-secondary/60 uppercase tracking-widest">Sin asignar</span>
                     </div>
-                    <div className="w-[1100px] relative overflow-hidden flex items-center gap-2 px-3">
+                    <div className="w-[1700px] relative overflow-hidden flex items-center gap-2 px-3">
                   {unassigned.map(res => {
                     const isSelected = selectedResId === res.id;
                     return (
@@ -303,7 +311,7 @@ export default function ReservasView({ selectedDate, setSelectedDate }: { select
                             {table.zone} · {table.capacity}p
                           </span>
                         </div>
-                        <div className="w-[1100px] relative bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTAwIDBMMTAwIDEwMCIgc3Ryb2tlPSIjZjVmNWY0IiBzdHJva2Utd2lkdGg9IjEiIGZpbGw9Im5vbmUiLz48L3N2Zz4=')]">
+                        <div className="w-[1700px] relative bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTAwIDBMMTAwIDEwMCIgc3Ryb2tlPSIjZjVmNWY0IiBzdHJva2Utd2lkdGg9IjEiIGZpbGw9Im5vbmUiLz48L3N2Zz4=')]">
                       {tableRes.map(res => {
                         const pos = getSlotPosition(res.start_time, res.end_time);
                         const isSelected = selectedResId === res.id;
