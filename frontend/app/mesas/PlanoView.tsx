@@ -73,8 +73,25 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   };
 
   const fetchProducts = async () => {
-    const { data } = await supabase.from('products').select('*').eq('available', true);
-    if (data) setProducts(data);
+    try {
+      const res = await fetch('/api/menu');
+      if (res.ok) {
+        const data = await res.json();
+        const mappedData = data
+          .filter((p: any) => p.disponible === 'Sí' || p.disponible === 'Si' || p.disponible === 'Si ' || p.disponible === 'Sí ')
+          .map((p: any) => ({
+            id: p.producto,
+            name: p.producto,
+            category: p.tipo,
+            price: parseFloat(String(p.precio).replace(/[^0-9.-]+/g,"")) || 0,
+            description: p.ingredientes,
+            image_url: null
+          }));
+        setProducts(mappedData);
+      }
+    } catch (e) {
+      console.error("Error fetching products from menu:", e);
+    }
   };
 
   useEffect(() => {
