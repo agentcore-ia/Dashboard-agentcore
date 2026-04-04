@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { printTicket } from "./printTicket";
+import POSDrawer, { OrderItem } from "./POSDrawer";
 
 export interface Table {
   id: string;
@@ -23,16 +24,6 @@ export interface Table {
   current_order_items?: OrderItem[] | null;
 }
 
-export interface OrderItem {
-  id: string;
-  product_id: string;
-  name: string;
-  price: number;
-  quantity: number;
-  description?: string;
-}
-
-// Payment method options for the checkout modal
 type PaymentMethod = "cash" | "card" | "transfer" | "qr";
 
 const RESTAURANT_ID = "00000000-0000-0000-0000-000000000001";
@@ -47,12 +38,11 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const [isMenuDrawerOpen, setIsMenuDrawerOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
-  // Checkout modal state
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
-  const [discount, setDiscount] = useState<number>(0); // percentage 0-100
+  const [discount, setDiscount] = useState<number>(0);
 
   const fetchTables = async () => {
     const { data, error } = await supabase.from('mesas').select('*');
@@ -130,7 +120,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const uniqueCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
   const selectedTable = derivedTables.find(t => t.id === selectedTableId);
 
-  // Computed totals for checkout
   const subtotalAmount = selectedTable?.current_bill || 0;
   const discountAmount = Math.round(subtotalAmount * discount / 100);
   const totalAmount = subtotalAmount - discountAmount;
@@ -153,44 +142,11 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
     }
   };
 
-  const addProductToTable = (product: any) => {
-    if (!selectedTable) return;
-    const currentItems = selectedTable.current_order_items || [];
-    const existingIndex = currentItems.findIndex(i => i.product_id === product.id);
-    let newItems = [...currentItems];
-    if (existingIndex >= 0) {
-      newItems[existingIndex] = { ...newItems[existingIndex], quantity: newItems[existingIndex].quantity + 1 };
-    } else {
-      newItems.push({ id: Math.random().toString(36).substring(7), product_id: product.id, name: product.name, price: parseFloat(product.price) || 0, quantity: 1, description: product.description });
-    }
-    const newBill = newItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    updateTableStatus(selectedTable.id, selectedTable.status, { current_order_items: newItems, current_bill: newBill });
-  };
-
-  const updateProductQuantity = (itemId: string, delta: number) => {
-    if (!selectedTable) return;
-    const newItems = (selectedTable.current_order_items || []).map(i =>
-      i.id === itemId ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i
-    );
-    const newBill = newItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    updateTableStatus(selectedTable.id, selectedTable.status, { current_order_items: newItems, current_bill: newBill });
-  };
-
-  const removeProductFromTable = (itemId: string) => {
-    if (!selectedTable) return;
-    const newItems = (selectedTable.current_order_items || []).filter(i => i.id !== itemId);
-    const newBill = newItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    updateTableStatus(selectedTable.id, selectedTable.status, { current_order_items: newItems, current_bill: newBill });
-  };
-
   const clearTable = (tableId: string, tableStatus: "free" | "occupied" | "reserved") => {
     if (!window.confirm(`¿Limpiar la cuenta de ${selectedTable?.name}?`)) return;
     updateTableStatus(tableId, tableStatus, { current_bill: 0, current_order_items: [] });
   };
 
-  /**
-   * COBRAR: Saves the order to pedidos + items_pedido, then clears the table.
-   */
   const procesarCobro = async () => {
     if (!selectedTable) return;
     const orderItems = selectedTable.current_order_items || [];
@@ -198,7 +154,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
 
     setIsProcessing(true);
     try {
-      // 1. Insert into pedidos
       const { data: pedido, error: pedidoError } = await supabase
         .from('pedidos')
         .insert({
@@ -220,20 +175,18 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
 
       if (pedidoError) throw pedidoError;
 
-      // 2. Insert items_pedido (product_id is null since menu comes from Sheets, not DB products)
       const items = orderItems.map(item => ({
         pedido_id: pedido.id,
         product_id: null,
         name: item.name,
         price: item.price,
         quantity: item.quantity,
-        notes: null,
+        notes: (item as any).note || null,
       }));
 
       const { error: itemsError } = await supabase.from('items_pedido').insert(items);
       if (itemsError) throw itemsError;
 
-      // 3. Clear the table
       await supabase.from('mesas').update({
         status: 'free',
         current_client: null,
@@ -248,7 +201,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           : t
       ));
 
-      // 4. Print ticket
       printTicket({
         tableName: selectedTable.name,
         clientName: selectedTable.current_client,
@@ -260,7 +212,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         paymentMethod,
       });
 
-      // 5. Show success state
       setCheckoutSuccess(true);
       setTimeout(() => {
         setIsCheckoutOpen(false);
@@ -279,7 +230,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
     }
   };
 
-  // Table status styles
   const tableTheme = {
     free:     { badge: "bg-emerald-500 text-white",  border: "border-emerald-300", ring: "ring-emerald-200", label: "Libre" },
     occupied: { badge: "bg-red-700 text-white",       border: "border-red-400",    ring: "ring-red-200",    label: "Ocupada" },
@@ -296,7 +246,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   return (
     <div className="flex flex-col gap-4 w-full h-full animate-in fade-in duration-300">
 
-      {/* ── METRIC CARDS ── */}
+      {/* METRIC CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
         {[
           { label: "Libres",      value: stats.free,     color: "text-emerald-600", bg: "bg-emerald-50",  icon: "check_circle" },
@@ -316,10 +266,9 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         ))}
       </div>
 
-      {/* ── FLOOR PLAN + DETAIL PANEL ── */}
+      {/* FLOOR PLAN + DETAIL */}
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
 
-        {/* Floor Plan */}
         <div
           className={`bg-stone-100 rounded-2xl border border-stone-200 overflow-auto custom-scrollbar relative transition-all duration-300 ${selectedTable ? 'lg:flex-1 h-[50vh] lg:h-full' : 'flex-1 h-[60vh] lg:h-full'}`}
           onPointerDown={(e) => {
@@ -422,7 +371,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         {selectedTable && (
           <div className="lg:w-[360px] xl:w-[400px] shrink-0 animate-in fade-in slide-in-from-bottom-2 lg:slide-in-from-right-4 duration-200">
             <div className="bg-white rounded-2xl shadow-lg border border-stone-100 flex flex-col overflow-hidden h-full max-h-[80vh] lg:max-h-full">
-              {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0">
                 <div className="flex items-center gap-3">
                   <h3 className="text-xl font-black text-stone-800">{selectedTable.name}</h3>
@@ -438,10 +386,9 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
               </div>
 
               <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {/* ── OCCUPIED ── */}
+                {/* OCCUPIED */}
                 {selectedTable.status === 'occupied' && (
                   <div className="flex flex-col">
-                    {/* Client info */}
                     <div className="px-5 py-4 flex items-center gap-3 bg-red-50/50 border-b border-stone-100">
                       <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
                         <span className="material-symbols-outlined text-red-600 text-[18px]">person</span>
@@ -453,7 +400,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                       </div>
                     </div>
 
-                    {/* Items */}
                     <div className="px-5 pt-3 pb-2">
                       <div className="flex justify-between items-center mb-3">
                         <span className="text-[10px] font-black uppercase tracking-widest text-stone-400">Detalle de consumo</span>
@@ -474,13 +420,11 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                       )}
                     </div>
 
-                    {/* Total */}
                     <div className="px-5 py-3 border-t border-dashed border-stone-200 flex justify-between items-center">
                       <span className="text-xs font-black uppercase tracking-widest text-stone-400">Total a pagar</span>
                       <span className="text-2xl font-black text-red-700">${(selectedTable.current_bill || 0).toLocaleString('es-AR')}</span>
                     </div>
 
-                    {/* Category quick access */}
                     <div className="px-5 py-2 border-t border-stone-100">
                       <div className="flex gap-2 overflow-x-auto hide-scroll pb-1">
                         {uniqueCategories.slice(0, 6).map(cat => (
@@ -492,7 +436,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                       </div>
                     </div>
 
-                    {/* Actions */}
                     <div className="p-4 flex flex-col gap-2 shrink-0">
                       <button onClick={() => { setActiveCategory(null); setIsMenuDrawerOpen(true); }}
                         className="w-full bg-red-700 hover:bg-red-800 text-white py-3.5 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md shadow-red-900/20 active:scale-95 transition-all">
@@ -519,7 +462,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                         </button>
                       </div>
 
-                      {/* COBRAR button */}
                       <button
                         onClick={() => setIsCheckoutOpen(true)}
                         disabled={(selectedTable.current_order_items || []).length === 0}
@@ -532,7 +474,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                   </div>
                 )}
 
-                {/* ── FREE ── */}
+                {/* FREE */}
                 {selectedTable.status === 'free' && (
                   <div className="p-5 flex flex-col gap-5">
                     <div className="bg-stone-50 rounded-xl p-4 flex items-center gap-3">
@@ -554,7 +496,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                   </div>
                 )}
 
-                {/* ── RESERVED ── */}
+                {/* RESERVED */}
                 {selectedTable.status === 'reserved' && (
                   <div className="p-5 flex flex-col gap-4">
                     <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
@@ -565,26 +507,24 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                         <span className="text-sm font-bold">{selectedTable.reservation_time}</span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        if (selectedTable.active_reserva_id) {
-                          updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', current_client: selectedTable.current_client }, { id: selectedTable.active_reserva_id, status: 'seated' });
-                        } else {
-                          updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', reservation_time: null });
-                        }
-                      }}
+                    <button onClick={() => {
+                      if (selectedTable.active_reserva_id) {
+                        updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', current_client: selectedTable.current_client }, { id: selectedTable.active_reserva_id, status: 'seated' });
+                      } else {
+                        updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', reservation_time: null });
+                      }
+                    }}
                       className="w-full bg-amber-500 hover:bg-amber-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md active:scale-95 transition-all">
                       <span className="material-symbols-outlined text-[18px]">person_add</span>
                       Sentar clientes
                     </button>
-                    <button
-                      onClick={() => {
-                        if (selectedTable.active_reserva_id) {
-                          updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null }, { id: selectedTable.active_reserva_id, status: 'cancelled' });
-                        } else {
-                          updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null });
-                        }
-                      }}
+                    <button onClick={() => {
+                      if (selectedTable.active_reserva_id) {
+                        updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null }, { id: selectedTable.active_reserva_id, status: 'cancelled' });
+                      } else {
+                        updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null });
+                      }
+                    }}
                       className="w-full text-stone-400 hover:text-red-600 py-2 font-bold text-xs flex items-center justify-center gap-1 transition-colors">
                       <span className="material-symbols-outlined text-sm">cancel</span>
                       Cancelar reserva
@@ -597,7 +537,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         )}
       </div>
 
-      {/* ── BILL MODAL ── */}
+      {/* BILL MODAL */}
       {isBillOpen && selectedTable && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center animate-in fade-in p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
@@ -640,12 +580,11 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         </div>
       )}
 
-      {/* ── CHECKOUT MODAL ── */}
+      {/* CHECKOUT MODAL */}
       {isCheckoutOpen && selectedTable && (
         <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-in fade-in p-0 sm:p-4">
           <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
 
-            {/* Success overlay */}
             {checkoutSuccess && (
               <div className="absolute inset-0 bg-emerald-700 flex flex-col items-center justify-center z-10 animate-in fade-in">
                 <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mb-4">
@@ -656,7 +595,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
               </div>
             )}
 
-            {/* Header */}
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-stone-100">
               <div>
                 <h3 className="text-xl font-black text-stone-800">Cobrar cuenta</h3>
@@ -668,8 +606,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
             </div>
 
             <div className="px-6 py-4 overflow-y-auto max-h-[70vh]">
-
-              {/* Order summary (compact) */}
               <div className="bg-stone-50 rounded-2xl p-4 mb-4">
                 <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Resumen del pedido</p>
                 <div className="flex flex-col gap-2 max-h-36 overflow-y-auto">
@@ -681,7 +617,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                   ))}
                 </div>
 
-                {/* Discount */}
                 <div className="mt-3 pt-3 border-t border-stone-200">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-stone-500">Descuento</span>
@@ -697,7 +632,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                   </div>
                 </div>
 
-                {/* Totals */}
                 <div className="mt-4 pt-3 border-t border-dashed border-stone-200 space-y-1">
                   <div className="flex justify-between text-sm text-stone-500">
                     <span>Subtotal</span>
@@ -716,7 +650,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 </div>
               </div>
 
-              {/* Payment method */}
               <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Método de pago</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
                 {paymentMethods.map(pm => (
@@ -728,12 +661,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 ))}
               </div>
 
-              {/* CONFIRM button */}
-              <button
-                onClick={procesarCobro}
-                disabled={isProcessing}
-                className="w-full h-16 rounded-2xl font-black text-lg flex items-center justify-center gap-3 bg-emerald-700 hover:bg-emerald-800 text-white transition-all active:scale-[0.98] disabled:opacity-60 shadow-lg shadow-green-900/20 mb-4"
-              >
+              <button onClick={procesarCobro} disabled={isProcessing}
+                className="w-full h-16 rounded-2xl font-black text-lg flex items-center justify-center gap-3 bg-emerald-700 hover:bg-emerald-800 text-white transition-all active:scale-[0.98] disabled:opacity-60 shadow-lg shadow-green-900/20 mb-4">
                 {isProcessing ? (
                   <>
                     <svg className="animate-spin w-5 h-5 text-white" fill="none" viewBox="0 0 24 24">
@@ -754,168 +683,22 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         </div>
       )}
 
-      {/* ── POS FULL-SCREEN ── */}
-      {isMenuDrawerOpen && selectedTable && (() => {
-        const orderItems = selectedTable.current_order_items || [];
-        const itemCount = orderItems.reduce((acc, i) => acc + i.quantity, 0);
-        const filteredProducts = products.filter(p => !activeCategory || p.category === activeCategory);
-
-        return (
-          <div className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-[#f5f4f2] animate-in fade-in duration-150"
-            onKeyDown={(e) => { if (e.key === 'Escape') setIsMenuDrawerOpen(false); }}
-            tabIndex={-1}
-          >
-            {/* LEFT: Catalog */}
-            <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-stone-200">
-              <div className="h-14 lg:h-16 px-4 lg:px-5 flex items-center gap-3 bg-white border-b border-stone-200 shrink-0">
-                <button onClick={() => setIsMenuDrawerOpen(false)} className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 active:scale-90 transition-all">
-                  <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-                </button>
-                <div className="flex-1 min-w-0">
-                  <span className="font-black text-stone-800 text-base lg:text-lg leading-none">{selectedTable.name}</span>
-                  <span className="hidden sm:inline ml-2 text-xs font-bold text-stone-400 uppercase tracking-widest">· Agregar productos</span>
-                </div>
-                {itemCount > 0 && (
-                  <span className="bg-emerald-700 text-white font-black text-xs lg:text-sm px-2.5 lg:px-3 py-1 lg:py-1.5 rounded-full shrink-0">
-                    {itemCount} ítem{itemCount !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 px-3 lg:px-4 py-2.5 lg:py-3 bg-white border-b border-stone-200 overflow-x-auto hide-scroll shrink-0">
-                <button onClick={() => setActiveCategory(null)}
-                  className={`shrink-0 h-9 lg:h-10 px-4 lg:px-5 rounded-xl font-black text-xs lg:text-sm transition-all duration-100 active:scale-95 ${!activeCategory ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}>
-                  Todos
-                </button>
-                {uniqueCategories.map(cat => (
-                  <button key={cat as string} onClick={() => setActiveCategory(cat as string)}
-                    className={`shrink-0 h-9 lg:h-10 px-4 lg:px-5 rounded-xl font-black text-xs lg:text-sm transition-all duration-100 active:scale-95 ${activeCategory === cat ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}>
-                    {cat as string}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-3 lg:p-4 custom-scrollbar">
-                {filteredProducts.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-stone-400 select-none">
-                    <span className="material-symbols-outlined text-[48px] opacity-30 mb-2">search_off</span>
-                    <span className="font-bold text-sm">Sin productos en esta categoría</span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2 lg:gap-3">
-                    {filteredProducts.map(p => {
-                      const existingItem = orderItems.find(i => i.product_id === p.id);
-                      return (
-                        <button key={p.id} onClick={() => addProductToTable(p)}
-                          className="group relative bg-white border-2 border-stone-100 hover:border-stone-700 active:scale-[0.93] active:bg-stone-900 active:border-stone-900 rounded-xl lg:rounded-2xl p-3 lg:p-4 flex flex-col justify-between text-left transition-all duration-100 select-none focus:outline-none"
-                          style={{ minHeight: '88px' }}
-                        >
-                          {existingItem && (
-                            <div className="absolute -top-1.5 -right-1.5 w-5 h-5 lg:w-6 lg:h-6 bg-emerald-700 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow z-10">
-                              {existingItem.quantity}
-                            </div>
-                          )}
-                          <span className="font-bold text-stone-800 text-xs lg:text-sm leading-snug line-clamp-2 group-active:text-white transition-colors">{p.name}</span>
-                          <span className="font-black text-red-700 text-base lg:text-lg mt-1.5 group-active:text-red-200 transition-colors">${(p.price || 0).toLocaleString('es-AR')}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* RIGHT: Comanda */}
-            <div className="w-full lg:w-[360px] xl:w-[420px] flex flex-col bg-white shrink-0 max-h-[45vh] lg:max-h-full">
-              <div className="h-14 lg:h-16 px-4 lg:px-5 flex items-center justify-between border-b border-stone-200 shrink-0">
-                <div className="flex items-center gap-2.5">
-                  <span className="font-black text-stone-800 text-base lg:text-lg">Comanda</span>
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${orderItems.length > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>
-                    {orderItems.length > 0 ? 'En curso' : 'Abierta'}
-                  </span>
-                </div>
-                {orderItems.length > 0 && (
-                  <button onClick={() => clearTable(selectedTable.id, selectedTable.status)}
-                    className="text-stone-300 hover:text-red-500 text-xs font-bold flex items-center gap-1 transition-colors">
-                    <span className="material-symbols-outlined text-[15px]">delete_sweep</span>
-                    <span className="hidden sm:inline">Limpiar</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="flex-1 overflow-y-auto custom-scrollbar px-3 lg:px-4 py-2 lg:py-3 flex flex-col gap-1.5 lg:gap-2">
-                {orderItems.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-stone-300 select-none py-6">
-                    <span className="material-symbols-outlined text-[52px] lg:text-[72px] mb-2">receipt_long</span>
-                    <span className="font-black text-sm text-stone-400">Cuenta vacía</span>
-                  </div>
-                ) : (
-                  orderItems.map((item, idx) => {
-                    const isLast = idx === orderItems.length - 1;
-                    return (
-                      <div key={item.id}
-                        className={`rounded-xl px-3 lg:px-4 py-2.5 lg:py-3 flex items-center gap-2 lg:gap-3 transition-all duration-150 ${isLast ? 'bg-emerald-50 border-2 border-emerald-300' : 'bg-stone-50 border border-stone-100'}`}>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button onClick={() => updateProductQuantity(item.id, -1)}
-                            className="w-7 h-7 lg:w-8 lg:h-8 rounded-lg bg-white border border-stone-200 hover:bg-stone-100 active:scale-90 flex items-center justify-center text-stone-600 transition-all">
-                            <span className="material-symbols-outlined text-[16px]">remove</span>
-                          </button>
-                          <span className="w-6 text-center font-black text-sm text-stone-800">{item.quantity}</span>
-                          <button onClick={() => updateProductQuantity(item.id, 1)}
-                            className="w-7 h-7 lg:w-8 lg:h-8 rounded-lg bg-stone-900 hover:bg-stone-700 active:scale-90 flex items-center justify-center text-white transition-all">
-                            <span className="material-symbols-outlined text-[16px]">add</span>
-                          </button>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-stone-800 text-xs lg:text-sm leading-tight truncate">{item.name}</p>
-                          <p className="text-[10px] lg:text-xs text-stone-400 font-medium">${(item.price || 0).toLocaleString('es-AR')} c/u</p>
-                        </div>
-                        <span className="font-black text-stone-800 text-sm shrink-0">${((item.price || 0) * item.quantity).toLocaleString('es-AR')}</span>
-                        <button onClick={() => removeProductFromTable(item.id)}
-                          className="w-7 h-7 rounded-lg text-stone-200 hover:text-red-500 hover:bg-red-50 active:scale-90 flex items-center justify-center transition-all shrink-0">
-                          <span className="material-symbols-outlined text-[16px]">close</span>
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="bg-white border-t border-stone-100 p-3 lg:p-4 shrink-0">
-                <div className="flex justify-between items-center text-xs font-bold text-stone-400 mb-1">
-                  <span>{itemCount} ítem{itemCount !== 1 ? 's' : ''} · Subtotal</span>
-                  <span>${(selectedTable.current_bill || 0).toLocaleString('es-AR')}</span>
-                </div>
-                <div className="flex justify-between items-baseline border-t border-dashed border-stone-100 pt-2 mb-3">
-                  <span className="text-xs font-black uppercase tracking-widest text-stone-400">TOTAL</span>
-                  <span className="text-3xl lg:text-4xl xl:text-[44px] leading-none font-black text-stone-900 tracking-tighter">
-                    ${(selectedTable.current_bill || 0).toLocaleString('es-AR')}
-                  </span>
-                </div>
-                <button
-                  onClick={() => { setIsMenuDrawerOpen(false); setIsCheckoutOpen(true); }}
-                  disabled={orderItems.length === 0}
-                  className="w-full h-12 lg:h-14 rounded-xl lg:rounded-2xl font-black text-base lg:text-lg flex items-center justify-center gap-2 transition-all duration-100 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-700 hover:bg-emerald-800 text-white shadow-md mb-2"
-                >
-                  <span className="material-symbols-outlined text-xl">payments</span>
-                  Cobrar cuenta
-                </button>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => clearTable(selectedTable.id, selectedTable.status)}
-                    className="h-9 lg:h-11 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all">
-                    <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
-                    Limpiar
-                  </button>
-                  <button className="h-9 lg:h-11 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all">
-                    <span className="material-symbols-outlined text-[16px]">local_offer</span>
-                    Descuento
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {/* HIGH-SPEED POS */}
+      {isMenuDrawerOpen && selectedTable && (
+        <POSDrawer
+          table={selectedTable}
+          products={products}
+          initialCategory={activeCategory}
+          onClose={() => setIsMenuDrawerOpen(false)}
+          onCobrar={() => { setIsMenuDrawerOpen(false); setIsCheckoutOpen(true); }}
+          onSave={(newItems, bill) =>
+            updateTableStatus(selectedTable.id, selectedTable.status, {
+              current_order_items: newItems,
+              current_bill: bill,
+            })
+          }
+        />
+      )}
     </div>
   );
 }
