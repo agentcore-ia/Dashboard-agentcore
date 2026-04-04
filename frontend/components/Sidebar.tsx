@@ -31,7 +31,7 @@ export default function Sidebar({ isOpen, onClose }: { isOpen?: boolean; onClose
           <div className="w-10 h-10 rounded-xl bg-blue-500 overflow-hidden flex items-center justify-center shrink-0">
              <Image 
                 src="/logo.png" 
-                alt="Order Pilot Logo" 
+                alt="Neuro Rest Logo" 
                 width={40} 
                 height={40}
                 className="object-cover w-full h-full"
@@ -39,7 +39,7 @@ export default function Sidebar({ isOpen, onClose }: { isOpen?: boolean; onClose
           </div>
           <div>
             <h1 className="text-2xl font-black text-orange-900 tracking-tight leading-none font-headline">
-              Order Pilot
+              Neuro Rest
             </h1>
           </div>
         </div>

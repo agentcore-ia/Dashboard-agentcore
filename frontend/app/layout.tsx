@@ -48,9 +48,7 @@ export default function RootLayout({
               >
                 <Menu className="w-6 h-6" />
               </button>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-orange-900 tracking-tight leading-none text-lg">Order Pilot</span>
-              </div>
+                <span className="font-bold text-orange-900 tracking-tight leading-none text-lg">Neuro Rest</span>
             </header>
 
             {/* Desktop Top Nav (Shows on lg+) */}
