@@ -27,14 +27,14 @@ export default function Sidebar({ isOpen, onClose }: { isOpen?: boolean; onClose
         style={{ width: "var(--sidebar-width)", minWidth: "var(--sidebar-width)" }}
       >
         {/* Logo Section */}
-        <div className="px-6 mb-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-500 overflow-hidden flex items-center justify-center shrink-0">
+        <div className="px-6 mb-10 flex items-center gap-4">
+          <div className="w-14 h-14 overflow-hidden flex items-center justify-center shrink-0">
              <Image 
                 src="/logo.png" 
                 alt="Neuro Rest Logo" 
-                width={40} 
-                height={40}
-                className="object-cover w-full h-full"
+                width={56} 
+                height={56}
+                className="object-contain w-full h-full"
              />
           </div>
           <div>
