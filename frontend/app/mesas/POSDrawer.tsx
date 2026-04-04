@@ -34,10 +34,10 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
 
   const add = (p: Prod) => {
     setUndo(items); setLastProd(p); trackMU(p.id);
-    setFlashId(p.id); setTimeout(()=>setFlashId(null),250);
+    setFlashId(p.id); setTimeout(()=>setFlashId(null),120);
     const idx=items.findIndex(i=>i.product_id===p.id);
     commit(idx>=0 ? items.map((i,n)=>n===idx?{...i,quantity:i.quantity+1}:i) : [...items,{id:Math.random().toString(36).slice(2),product_id:p.id,name:p.name,price:p.price,quantity:1}]);
-    setTimeout(()=>{ if(listRef.current) listRef.current.scrollTop=listRef.current.scrollHeight; },50);
+    setTimeout(()=>{ if(listRef.current) listRef.current.scrollTop=listRef.current.scrollHeight; },20);
   };
 
   const chQty = (id:string,d:number) => { setUndo(items); commit(items.map(i=>i.id===id?{...i,quantity:Math.max(1,i.quantity+d)}:i)); };
@@ -61,7 +61,7 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
   },[items,undo]);
 
   const Btn = ({label,onClick,cls}:{label:string;onClick:()=>void;cls?:string}) => (
-    <button onClick={onClick} className={`shrink-0 h-8 px-3 rounded-lg font-bold text-xs transition-all active:scale-95 ${cls}`}>{label}</button>
+    <button onClick={onClick} className={`shrink-0 h-10 px-4 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-75 active:scale-90 ${cls}`}>{label}</button>
   );
 
   return (
@@ -88,9 +88,9 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
         </div>
 
         {/* categories */}
-        <div className="flex items-center gap-1.5 px-3 py-2 bg-stone-900 border-b border-stone-800 overflow-x-auto shrink-0 hide-scroll">
-          <Btn label="Todo" onClick={()=>setCat(null)} cls={!cat?"bg-white text-stone-900":"bg-stone-800 text-stone-400 hover:bg-stone-700"}/>
-          {cats.map(c=><Btn key={c} label={c} onClick={()=>setCat(cat===c?null:c)} cls={cat===c?"bg-white text-stone-900":"bg-stone-800 text-stone-400 hover:bg-stone-700"}/>)}
+        <div className="flex items-center gap-2 px-3 py-2.5 bg-stone-950 border-b border-stone-800 overflow-x-auto shrink-0 hide-scroll sticky top-0 z-20">
+          <Btn label="TODAS" onClick={()=>setCat(null)} cls={!cat?"bg-emerald-500 text-stone-950 scale-105 shadow-md shadow-emerald-900/30":"bg-stone-800 text-stone-400 hover:bg-stone-700"}/>
+          {cats.map(c=><Btn key={c} label={c.toUpperCase()} onClick={()=>setCat(cat===c?null:c)} cls={cat===c?"bg-emerald-500 text-stone-950 scale-105 shadow-md shadow-emerald-900/30":"bg-stone-800 text-stone-400 hover:bg-stone-700"}/>)}
         </div>
 
         {/* quick actions */}
@@ -106,19 +106,19 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
           {filtered.length===0 ? (
             <div className="flex flex-col items-center justify-center h-full text-stone-700"><span className="material-symbols-outlined text-[40px] mb-2">search_off</span><span className="font-bold text-sm">Sin resultados</span></div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-1.5">
               {filtered.map(p=>{
                 const inCart=items.find(i=>i.product_id===p.id);
                 const flash=flashId===p.id;
                 return (
                   <button key={p.id} onClick={()=>add(p)}
-                    className={`relative flex flex-col justify-between text-left rounded-xl p-2.5 transition-all duration-100 active:scale-[0.90] select-none border-2 focus:outline-none
-                      ${flash?"bg-emerald-600 border-emerald-400 scale-[0.94]":inCart?"bg-stone-800 border-stone-600 hover:border-stone-500":"bg-stone-900 border-stone-800 hover:border-stone-600 hover:bg-stone-800"}`}
-                    style={{minHeight:"76px"}}>
-                    {inCart && <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-emerald-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow z-10">{inCart.quantity}</div>}
-                    {(mu[p.id]||0)>2&&!inCart && <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"/>}
-                    <span className={`font-semibold text-xs leading-snug line-clamp-2 ${flash?"text-white":"text-stone-200"}`}>{p.name}</span>
-                    <span className={`font-black text-sm mt-1 ${flash?"text-emerald-100":"text-emerald-400"}`}>{fmt(p.price||0)}</span>
+                    className={`relative flex flex-col justify-between text-left rounded-xl p-2 transition-all duration-75 active:scale-[0.85] select-none border-2 focus:outline-none
+                      ${flash?"bg-emerald-500 border-emerald-400 scale-[0.95] shadow-lg shadow-emerald-500/20":inCart?"bg-stone-800 border-emerald-600/50 hover:border-emerald-500":"bg-stone-900 border-stone-800 hover:border-stone-600 hover:bg-stone-800"}`}
+                    style={{minHeight:"68px"}}>
+                    {inCart && <div className="absolute -top-2 -right-2 w-6 h-6 bg-emerald-500 text-stone-950 text-[11px] font-black rounded-full flex items-center justify-center shadow-md z-10 border-2 border-stone-900">{inCart.quantity}</div>}
+                    {(mu[p.id]||0)>2&&!inCart && <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500"/>}
+                    <span className={`font-bold text-[11px] leading-tight line-clamp-2 ${flash?"text-stone-950":"text-stone-200"}`}>{p.name}</span>
+                    <span className={`font-black text-xs ${flash?"text-stone-900":"text-emerald-400"}`}>{fmt(p.price||0)}</span>
                   </button>
                 );
               })}
@@ -140,7 +140,7 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
           {items.length>0 && <button onClick={clear} className="text-stone-700 hover:text-red-400 text-xs flex items-center gap-1 transition-colors"><span className="material-symbols-outlined text-[13px]">delete_sweep</span>Limpiar</button>}
         </div>
 
-        <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar px-3 py-2 flex flex-col gap-1.5">
+        <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2 flex flex-col gap-2">
           {items.length===0 ? (
             <div className="flex flex-col items-center justify-center h-full text-stone-700 select-none py-6">
               <span className="material-symbols-outlined text-[48px] mb-2">receipt_long</span>
@@ -150,67 +150,77 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
           ) : items.map((item,idx)=>{
             const isLast=idx===items.length-1;
             return (
-              <div key={item.id} className={`rounded-xl p-2.5 ${isLast?"ring-1 ring-emerald-600 bg-stone-800":"bg-stone-800/50"}`}>
+              <div key={item.id} className={`rounded-xl p-2.5 transition-colors border ${isLast?"border-emerald-500 bg-emerald-950/20 shadow-lg":"border-stone-800 bg-stone-900"}`}>
                 <div className="flex items-center gap-1.5">
-                  <button onClick={()=>chQty(item.id,-1)} className="w-7 h-7 rounded-lg bg-stone-700 hover:bg-stone-600 active:scale-90 flex items-center justify-center text-white transition-all shrink-0">
-                    <span className="material-symbols-outlined text-[15px]">remove</span>
-                  </button>
-                  {editQty?.id===item.id ? (
-                    <input autoFocus type="number" value={editQty.val}
-                      onChange={e=>setEditQty({id:item.id,val:e.target.value})}
-                      onBlur={()=>{setQty(item.id,parseInt(editQty.val)||1);setEditQty(null);}}
-                      onKeyDown={e=>{if(e.key==="Enter"){setQty(item.id,parseInt(editQty.val)||1);setEditQty(null);}if(e.key==="Escape")setEditQty(null);}}
-                      className="w-10 h-7 text-center bg-stone-700 text-white text-sm font-black rounded-lg outline-none border border-emerald-500 shrink-0"/>
-                  ) : (
-                    <button onClick={()=>setEditQty({id:item.id,val:String(item.quantity)})} className="w-8 text-center font-black text-white text-sm hover:text-emerald-400 shrink-0 transition-colors">
-                      {item.quantity}
+                  <div className="flex flex-col items-center gap-1 shrink-0 bg-stone-950 p-1 rounded-lg border border-stone-800">
+                    <button onClick={()=>chQty(item.id,1)} className="w-9 h-7 rounded-md bg-emerald-700 hover:bg-emerald-600 active:scale-95 flex items-center justify-center text-white transition-all">
+                      <span className="material-symbols-outlined text-[18px]">add</span>
                     </button>
-                  )}
-                  <button onClick={()=>chQty(item.id,1)} className="w-7 h-7 rounded-lg bg-emerald-700 hover:bg-emerald-600 active:scale-90 flex items-center justify-center text-white transition-all shrink-0">
-                    <span className="material-symbols-outlined text-[15px]">add</span>
-                  </button>
-                  <div className="flex-1 min-w-0 mx-1">
-                    <p className="font-semibold text-stone-200 text-xs leading-tight truncate">{item.name}</p>
-                    {item.note && <p className="text-[10px] text-amber-400 truncate">📝 {item.note}</p>}
+                    {editQty?.id===item.id ? (
+                      <input autoFocus type="number" onFocus={e=>e.target.select()} value={editQty.val}
+                        onChange={e=>setEditQty({id:item.id,val:e.target.value})}
+                        onBlur={()=>{setQty(item.id,parseInt(editQty.val)||1);setEditQty(null);}}
+                        onKeyDown={e=>{if(e.key==="Enter"){setQty(item.id,parseInt(editQty.val)||1);setEditQty(null);}if(e.key==="Escape")setEditQty(null);}}
+                        className="w-9 h-7 text-center bg-stone-800 text-emerald-400 text-sm font-black rounded-md outline-none focus:ring-1 focus:ring-emerald-500"/>
+                    ) : (
+                      <button onClick={()=>setEditQty({id:item.id,val:String(item.quantity)})} className="w-9 h-6 text-center font-black text-white text-[15px] hover:text-emerald-400 transition-colors">
+                        {item.quantity}
+                      </button>
+                    )}
+                    <button onClick={()=>chQty(item.id,-1)} className="w-9 h-7 rounded-md bg-stone-800 hover:bg-stone-700 active:scale-95 flex items-center justify-center text-stone-300 transition-all">
+                      <span className="material-symbols-outlined text-[18px]">remove</span>
+                    </button>
                   </div>
-                  <span className="font-black text-white text-sm shrink-0">{fmt((item.price||0)*item.quantity)}</span>
-                  <button onClick={()=>rm(item.id)} className="w-7 h-7 rounded-lg text-stone-700 hover:text-red-400 hover:bg-red-900/20 active:scale-90 flex items-center justify-center transition-all shrink-0">
-                    <span className="material-symbols-outlined text-[14px]">close</span>
-                  </button>
+                  
+                  <div className="flex-1 min-w-0 px-2 flex flex-col justify-center">
+                    <p className={`font-bold text-sm leading-tight truncate ${isLast?"text-white":"text-stone-200"}`}>{item.name}</p>
+                    <span className="font-black text-emerald-400 text-[13px] mt-0.5">{fmt((item.price||0))} <span className="opacity-50 text-[10px] font-bold">c/u</span></span>
+                    
+                    {editNote?.id===item.id ? (
+                      <input autoFocus type="text" value={editNote.val} maxLength={60}
+                        onChange={e=>setEditNote({id:item.id,val:e.target.value})}
+                        onBlur={()=>{setNote(item.id,editNote.val);setEditNote(null);}}
+                        onKeyDown={e=>{if(e.key==="Enter"){setNote(item.id,editNote.val);setEditNote(null);}if(e.key==="Escape")setEditNote(null);}}
+                        placeholder="Sin cebolla..."
+                        className="mt-2 w-full bg-stone-950 text-amber-400 text-xs px-2 py-1.5 rounded-md outline-none border border-amber-900/50 placeholder:text-stone-700"/>
+                    ) : (
+                      <button onClick={()=>setEditNote({id:item.id,val:item.note||""})} className={`mt-1.5 text-left text-xs font-semibold truncate transition-colors w-full rounded p-1 -ml-1 ${item.note?'text-amber-400 bg-amber-950/30 hover:bg-amber-950/50':'text-stone-600 hover:text-stone-400 hover:bg-stone-800'}`}>
+                        {item.note ? `📝 ${item.note}` : "＋ Agregar nota"}
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <button onClick={()=>rm(item.id)} className="w-8 h-8 rounded-lg bg-stone-800/50 text-stone-500 hover:text-red-400 hover:bg-red-950/50 active:scale-90 flex items-center justify-center transition-all">
+                      <span className="material-symbols-outlined text-[18px]">delete</span>
+                    </button>
+                    <span className="font-black text-white text-base mt-auto">{fmt((item.price||0)*item.quantity)}</span>
+                  </div>
                 </div>
-                {editNote?.id===item.id ? (
-                  <input autoFocus type="text" value={editNote.val} maxLength={60}
-                    onChange={e=>setEditNote({id:item.id,val:e.target.value})}
-                    onBlur={()=>{setNote(item.id,editNote.val);setEditNote(null);}}
-                    onKeyDown={e=>{if(e.key==="Enter"){setNote(item.id,editNote.val);setEditNote(null);}if(e.key==="Escape")setEditNote(null);}}
-                    placeholder="Sin cebolla, bien cocido…"
-                    className="mt-1.5 w-full bg-stone-700 text-stone-200 text-xs px-2 py-1.5 rounded-lg outline-none border border-amber-600/50 placeholder:text-stone-600"/>
-                ) : (
-                  <button onClick={()=>setEditNote({id:item.id,val:item.note||""})} className="mt-1 text-left text-[11px] text-stone-700 hover:text-amber-400 transition-colors w-full truncate">
-                    {item.note ? `📝 ${item.note}` : "＋ nota"}
-                  </button>
-                )}
               </div>
             );
           })}
         </div>
 
         {/* sticky bottom */}
-        <div className="border-t border-stone-800 p-3 shrink-0">
-          <div className="flex justify-between items-baseline mb-2">
-            <span className="text-xs font-black uppercase tracking-widest text-stone-500">TOTAL · {count} ítem{count!==1?"s":""}</span>
-            <span className="text-4xl font-black text-white tracking-tight">{fmt(total)}</span>
+        <div className="border-t-2 border-stone-800 p-4 bg-stone-950 shrink-0">
+          <div className="flex justify-between items-end mb-3">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-0.5">TOTAL COMANDA</span>
+              <span className="text-sm font-bold text-stone-400">{count} ítem{count!==1?"s":""}</span>
+            </div>
+            <span className="text-[40px] leading-none font-black text-white tracking-tighter">{fmt(total)}</span>
           </div>
           <button onClick={onCobrar} disabled={items.length===0}
-            className="w-full h-14 rounded-xl font-black text-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg mb-2">
-            <span className="material-symbols-outlined text-2xl">payments</span>
-            Cobrar
-            <kbd className="text-xs font-normal opacity-50 border border-white/20 px-1 rounded">Enter</kbd>
+            className="w-full h-16 rounded-2xl font-black text-xl flex items-center justify-center gap-3 transition-all duration-75 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-900/20 mb-3">
+            <span className="material-symbols-outlined text-[28px]">payments</span>
+            COBRAR
+            <kbd className="text-xs font-bold opacity-60 border-2 border-white/20 px-1.5 py-0.5 rounded-md ml-1">ENTER</kbd>
           </button>
-          <div className="text-center text-[10px] text-stone-700">
-            <kbd className="border border-stone-800 px-1 rounded">Esc</kbd> cerrar &nbsp;·&nbsp;
-            <kbd className="border border-stone-800 px-1 rounded">F</kbd> buscar &nbsp;·&nbsp;
-            <kbd className="border border-stone-800 px-1 rounded">Ctrl+Z</kbd> deshacer
+          <div className="flex items-center justify-center gap-4 text-[11px] font-bold text-stone-600">
+            <span className="flex items-center gap-1"><kbd className="border border-stone-800 px-1 rounded text-stone-500">ESC</kbd> Volver</span>
+            <span className="flex items-center gap-1"><kbd className="border border-stone-800 px-1 rounded text-stone-500">F</kbd> Buscar</span>
+            <span className="flex items-center gap-1"><kbd className="border border-stone-800 px-1 rounded text-stone-500">Ctrl+Z</kbd> Deshacer</span>
           </div>
         </div>
       </div>
