@@ -4,7 +4,7 @@ export interface TicketData {
   orderNumber?: number | null;
   items: { name: string; quantity: number; price: number }[];
   subtotal: number;
-  discount: number;        // percentage, e.g. 10
+  discount: number;
   discountAmount: number;
   total: number;
   paymentMethod: string;
@@ -17,158 +17,208 @@ const PAYMENT_LABELS: Record<string, string> = {
   qr:       "QR",
 };
 
-function line(char = "-", len = 32) {
-  return char.repeat(len);
-}
-
-function center(text: string, width = 32) {
-  const pad = Math.max(0, Math.floor((width - text.length) / 2));
-  return " ".repeat(pad) + text;
-}
-
-function cols(left: string, right: string, width = 32) {
-  const gap = Math.max(1, width - left.length - right.length);
-  return left + " ".repeat(gap) + right;
-}
-
 function fmt(n: number) {
   return "$" + n.toLocaleString("es-AR");
 }
 
 export function printTicket(data: TicketData) {
   const now = new Date();
-  const dateStr = now.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
-  const timeStr = now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = now.toLocaleDateString("es-AR", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
+  const timeStr = now.toLocaleTimeString("es-AR", {
+    hour: "2-digit", minute: "2-digit",
+  });
 
   const htmlContent = `
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Ticket · ${data.tableName}</title>
   <style>
+    /* ── SCREEN: big and readable ── */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      background: #f0f0f0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 24px 12px;
+    }
+
+    .ticket {
+      background: #fff;
+      width: 100%;
+      max-width: 480px;
+      padding: 28px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+      font-size: 15px;
+      line-height: 1.6;
+      color: #111;
+    }
+
+    .center   { text-align: center; }
+    .bold     { font-weight: bold; }
+    .xlarge   { font-size: 26px; font-weight: 900; letter-spacing: 1px; }
+    .large    { font-size: 18px; font-weight: bold; }
+    .small    { font-size: 12px; }
+    .muted    { color: #555; }
+
+    hr.solid  { border: none; border-top: 2px solid #111; margin: 10px 0; }
+    hr.dashed { border: none; border-top: 1px dashed #999; margin: 8px 0; }
+
+    .row { display: flex; justify-content: space-between; align-items: baseline; margin: 4px 0; }
+    .row-item { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0; }
+    .qty   { min-width: 30px; font-weight: bold; }
+    .iname { flex: 1; padding: 0 8px; }
+    .iprice{ text-align: right; font-weight: bold; }
+    .sub   { font-size: 12px; color: #777; padding-left: 38px; margin-top: -4px; margin-bottom: 4px; }
+
+    .total-block {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 12px 0 8px;
+    }
+    .total-label { font-size: 16px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
+    .total-value { font-size: 42px; font-weight: 900; line-height: 1; }
+
+    .discount-row { color: #16a34a; font-weight: bold; }
+
+    .footer { text-align: center; margin-top: 18px; }
+
+    .barcode {
+      text-align: center;
+      margin-top: 14px;
+      letter-spacing: 3px;
+      font-size: 13px;
+      color: #aaa;
+    }
+
+    /* ── PRINT: compact 80mm thermal ── */
+    @media print {
+      body {
+        background: #fff;
+        padding: 0;
+        display: block;
+      }
+      .ticket {
+        max-width: 100%;
+        width: 100%;
+        box-shadow: none;
+        border-radius: 0;
+        padding: 4mm 3mm;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      .xlarge   { font-size: 18px; }
+      .large    { font-size: 13px; }
+      .total-value { font-size: 26px; }
+      .total-label { font-size: 12px; }
+      hr.solid  { border-top-width: 1px; }
+    }
+
     @page {
       size: 80mm auto;
       margin: 0;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 12px;
-      width: 80mm;
-      padding: 6mm 4mm;
-      background: #fff;
-      color: #000;
-      line-height: 1.5;
-    }
-    .center   { text-align: center; }
-    .bold     { font-weight: bold; }
-    .large    { font-size: 18px; font-weight: bold; }
-    .xlarge   { font-size: 24px; font-weight: 900; letter-spacing: -0.5px; }
-    .divider  { border-top: 1px dashed #000; margin: 4px 0; }
-    .divider-solid { border-top: 1px solid #000; margin: 4px 0; }
-    .row      { display: flex; justify-content: space-between; }
-    .row-item { display: flex; justify-content: space-between; margin-bottom: 2px; }
-    .qty      { min-width: 24px; }
-    .item-name{ flex: 1; padding: 0 4px; }
-    .item-price{ min-width: 60px; text-align: right; }
-    .total-row{ display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; }
-    .label-total { font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
-    .value-total { font-size: 22px; font-weight: 900; }
-    .barcode  { text-align: center; margin-top: 8px; letter-spacing: 4px; font-size: 10px; }
-    @media print {
-      body { padding: 2mm 3mm; }
-    }
   </style>
 </head>
 <body>
+<div class="ticket">
 
   <!-- HEADER -->
-  <div class="center bold large" style="margin-bottom:2px;">AGENTCORE</div>
-  <div class="center" style="font-size:10px; margin-bottom:6px;">Sistema de Gestión · Salón</div>
-  <div class="divider-solid"></div>
+  <div class="center xlarge">AGENTCORE</div>
+  <div class="center small muted" style="margin-bottom:12px;">Sistema de Gestión · Salón</div>
+  <hr class="solid"/>
 
   <!-- META -->
-  <div class="row" style="margin:4px 0;">
-    <span>${dateStr}  ${timeStr}</span>
+  <div class="row" style="margin:8px 0;">
+    <span class="muted small">${dateStr} &nbsp; ${timeStr}</span>
     <span class="bold">${data.tableName.toUpperCase()}</span>
   </div>
-  ${data.clientName ? `<div style="margin-bottom:4px;">Cliente: <span class="bold">${data.clientName}</span></div>` : ""}
-  ${data.orderNumber ? `<div style="margin-bottom:4px; font-size:10px;">Pedido #${data.orderNumber}</div>` : ""}
-  <div class="divider"></div>
+  ${data.clientName ? `<div style="margin-bottom:8px;">Cliente: <span class="bold">${data.clientName}</span></div>` : ""}
+  <hr class="dashed"/>
 
   <!-- ITEMS HEADER -->
-  <div class="row bold" style="margin-bottom:3px; font-size:10px;">
-    <span>CANT  DESCRIPCIÓN</span>
+  <div class="row small bold muted" style="margin-bottom:6px;">
+    <span>CANT &nbsp; DESCRIPCIÓN</span>
     <span>IMPORTE</span>
   </div>
-  <div class="divider"></div>
+  <hr class="dashed"/>
 
   <!-- ITEMS -->
   ${data.items.map(item => `
   <div class="row-item">
     <span class="qty">${item.quantity}x</span>
-    <span class="item-name">${item.name}</span>
-    <span class="item-price">${fmt(item.price * item.quantity)}</span>
+    <span class="iname">${item.name}</span>
+    <span class="iprice">${fmt(item.price * item.quantity)}</span>
   </div>
-  ${item.quantity > 1 ? `<div style="font-size:10px; padding-left:28px; color:#555;">${fmt(item.price)} c/u</div>` : ""}
+  ${item.quantity > 1 ? `<div class="sub">${fmt(item.price)} c/u</div>` : ""}
   `).join("")}
 
-  <div class="divider"></div>
+  <hr class="dashed"/>
 
   <!-- SUBTOTAL -->
-  <div class="row" style="margin:3px 0;">
+  <div class="row muted" style="margin:6px 0;">
     <span>Subtotal</span>
-    <span>${fmt(data.subtotal)}</span>
+    <span class="bold">${fmt(data.subtotal)}</span>
   </div>
 
   ${data.discount > 0 ? `
-  <div class="row" style="margin:2px 0;">
+  <div class="row discount-row" style="margin-bottom:4px;">
     <span>Descuento (${data.discount}%)</span>
     <span>-${fmt(data.discountAmount)}</span>
-  </div>
-  ` : ""}
+  </div>` : ""}
 
-  <div class="divider-solid"></div>
+  <hr class="solid"/>
 
   <!-- TOTAL -->
-  <div class="total-row" style="margin:6px 0;">
-    <span class="label-total">TOTAL</span>
-    <span class="value-total">${fmt(data.total)}</span>
+  <div class="total-block">
+    <span class="total-label">TOTAL</span>
+    <span class="total-value">${fmt(data.total)}</span>
   </div>
 
-  <div class="divider"></div>
+  <hr class="dashed"/>
 
   <!-- PAYMENT -->
-  <div class="row" style="margin:4px 0;">
-    <span>Forma de pago</span>
+  <div class="row" style="margin:8px 0;">
+    <span class="muted">Forma de pago</span>
     <span class="bold">${PAYMENT_LABELS[data.paymentMethod] ?? data.paymentMethod}</span>
   </div>
 
-  <div class="divider-solid"></div>
+  <hr class="solid"/>
 
   <!-- FOOTER -->
-  <div class="center" style="margin-top:8px; font-size:11px;">¡Gracias por su visita!</div>
-  <div class="center" style="font-size:10px; margin-top:2px; color:#555;">agentcore-ia.com</div>
-
-  <div class="barcode" style="margin-top:10px;">
-    | || ||| || | || ||| ||| | |||<br/>
-    <span style="font-size:9px; letter-spacing:0;">${now.getTime().toString().slice(-8)}</span>
+  <div class="footer">
+    <div style="font-size:16px; font-weight:bold; margin-bottom:4px;">¡Gracias por su visita!</div>
+    <div class="small muted">agentcore-ia.com</div>
   </div>
 
-  <div style="height:12mm;"></div>
+  <div class="barcode">
+    | || ||| || | || ||| ||| | |||<br/>
+    <span style="font-size:11px; letter-spacing:0;">${now.getTime().toString().slice(-8)}</span>
+  </div>
 
-  <script>
-    window.onload = function() {
-      window.print();
-      setTimeout(function() { window.close(); }, 800);
-    };
-  </script>
+</div>
+
+<script>
+  window.onload = function() {
+    window.print();
+    setTimeout(function() { window.close(); }, 1000);
+  };
+</script>
 </body>
 </html>
 `;
 
-  const win = window.open("", "_blank", "width=350,height=600,toolbar=0,menubar=0,location=0");
+  const win = window.open("", "_blank", "width=560,height=700,toolbar=0,menubar=0,location=0,scrollbars=1");
   if (!win) {
     alert("Habilitá las ventanas emergentes para imprimir el ticket.");
     return;
