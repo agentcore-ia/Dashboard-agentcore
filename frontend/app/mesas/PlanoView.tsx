@@ -169,26 +169,43 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const addProductToTable = (product: any) => {
      if (!selectedTable) return;
      const currentItems = selectedTable.current_order_items || [];
-     const existingItemIndex = currentItems.findIndex(item => item.product_id === product.id);
+     const existingIndex = currentItems.findIndex(i => i.product_id === product.id);
      
-     let newItems;
-     if (existingItemIndex >= 0) {
-        newItems = [...currentItems];
-        newItems[existingItemIndex].quantity += 1;
+     let newItems = [...currentItems];
+     if(existingIndex >= 0) {
+        newItems[existingIndex] = {
+           ...newItems[existingIndex],
+           quantity: newItems[existingIndex].quantity + 1,
+        }
      } else {
-        newItems = [...currentItems, {
+        newItems.push({
            id: Math.random().toString(36).substring(7),
            product_id: product.id,
            name: product.name,
-           price: parseFloat(product.price),
+           price: parseFloat(product.price) || 0,
            quantity: 1,
            description: product.description
-        }];
+        });
      }
      
      const newBill = newItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
      updateTableStatus(selectedTable.id, selectedTable.status, { current_order_items: newItems, current_bill: newBill });
-     setIsMenuDrawerOpen(false);
+  };
+
+  const updateProductQuantityToTable = (itemId: string, delta: number) => {
+     if (!selectedTable) return;
+     const currentItems = selectedTable.current_order_items || [];
+     let newItems = [...currentItems];
+     const existingIndex = newItems.findIndex(i => i.id === itemId);
+     
+     if (existingIndex >= 0) {
+        newItems[existingIndex] = {
+           ...newItems[existingIndex],
+           quantity: Math.max(1, newItems[existingIndex].quantity + delta) // prevent < 1
+        };
+        const newBill = newItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        updateTableStatus(selectedTable.id, selectedTable.status, { current_order_items: newItems, current_bill: newBill });
+     }
   };
 
   const removeProductFromTable = (itemId: string) => {
@@ -640,67 +657,165 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           </div>
         </div>
       )}
-      {/* Menu Overlay Drawer */}
+         {/* Menu Overlay Drawer -> Full POS Interface */}
       {isMenuDrawerOpen && selectedTable && (
-        <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in">
-          <div className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" onClick={() => setIsMenuDrawerOpen(false)} />
-          <div className="w-[450px] max-w-full bg-surface-container-lowest h-full relative shadow-2xl flex flex-col slide-in-from-right animate-in border-l border-stone-200 pointer-events-auto">
-             <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-white z-10 sticky top-0">
-               <div>
-                  <h3 className="text-xl font-black font-headline text-stone-800">Menú de Productos</h3>
-                  <p className="text-xs font-bold text-stone-400 mt-1 uppercase tracking-widest">Agregando a {selectedTable.name}</p>
-               </div>
-               <button onClick={() => setIsMenuDrawerOpen(false)} className="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors">
-                  <span className="material-symbols-outlined font-bold">close</span>
-               </button>
-             </div>
-             
-             <div className="flex-1 overflow-y-auto bg-stone-50/50 p-6">
-                <div className="flex overflow-x-auto gap-2 pb-4 hide-scroll sticky top-0 bg-stone-50/50 pt-2 z-10 backdrop-blur-sm">
-                   <button 
-                      onClick={() => setActiveCategory(null)} 
-                      className={`shrink-0 px-4 py-2 rounded-xl font-bold text-xs transition-colors shadow-sm ${!activeCategory ? 'bg-red-800 text-white' : 'bg-white text-stone-600 border border-stone-200'}`}
-                   >
-                     Todos
-                   </button>
-                   {uniqueCategories.map(cat => (
-                      <button 
-                        key={cat as string} 
-                        onClick={() => setActiveCategory(cat as string)} 
-                        className={`shrink-0 px-4 py-2 rounded-xl font-bold text-xs transition-colors shadow-sm ${activeCategory === cat ? 'bg-red-800 text-white' : 'bg-white text-stone-600 border border-stone-200'}`}
-                      >
-                        {cat as string}
-                      </button>
-                   ))}
-                </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center animate-in fade-in bg-stone-900/60 backdrop-blur-sm p-4 lg:p-8">
+           <div className="w-full h-full max-w-[1400px] bg-stone-100 rounded-3xl shadow-2xl flex overflow-hidden border border-stone-200/50 slide-in-from-bottom-4 animate-in duration-300">
+              
+              {/* Left Panel: Catalog of Products */}
+              <div className="flex-[5] flex flex-col bg-stone-50">
+                 <div className="p-4 border-b border-stone-200 bg-white flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-4">
+                       <button onClick={() => setIsMenuDrawerOpen(false)} className="w-12 h-12 bg-stone-100 hover:bg-stone-200 rounded-full flex items-center justify-center text-stone-600 transition-colors shadow-sm active:scale-95">
+                          <span className="material-symbols-outlined font-black">arrow_back</span>
+                       </button>
+                       <div>
+                          <h3 className="text-2xl font-black font-headline text-stone-800 tracking-tight leading-none">Catálogo</h3>
+                          <p className="text-xs font-bold text-stone-500 uppercase tracking-widest mt-1">Mesa {selectedTable.name}</p>
+                       </div>
+                    </div>
+                 </div>
 
-                <div className="grid gap-4 mt-2 mb-20">
-                   {products
-                      .filter(p => !activeCategory || p.category === activeCategory)
-                      .map(p => (
-                      <div key={p.id} onClick={() => addProductToTable(p)} className="bg-white border border-stone-200 rounded-2xl p-4 flex gap-4 cursor-pointer hover:border-red-300 hover:shadow-md transition-all group active:scale-[0.98]">
-                         {p.image_url ? (
-                            <img src={p.image_url} alt={p.name} className="w-16 h-16 rounded-xl object-cover shrink-0 bg-stone-100" />
-                         ) : (
-                            <div className="w-16 h-16 rounded-xl bg-stone-100 flex items-center justify-center shrink-0 text-stone-400">
-                               <span className="material-symbols-outlined text-3xl">fastfood</span>
-                            </div>
-                         )}
-                         <div className="flex-1">
-                            <div className="flex justify-between items-start gap-2">
-                               <h4 className="font-bold text-stone-800 text-sm leading-tight">{p.name}</h4>
-                               <span className="font-black text-red-700 text-sm whitespace-nowrap">${parseFloat(p.price).toLocaleString('es-AR')}</span>
-                            </div>
-                            {p.description && <p className="text-xs text-stone-500 mt-1 line-clamp-2 leading-snug">{p.description}</p>}
-                         </div>
-                         <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 border border-red-100 flex items-center justify-center self-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <span className="material-symbols-outlined text-[18px]">add</span>
-                         </div>
-                      </div>
-                   ))}
-                </div>
-             </div>
-          </div>
+                 {/* Categories Tabs */}
+                 <div className="flex overflow-x-auto gap-3 p-4 hide-scroll border-b border-stone-200 bg-stone-100/50 shrink-0">
+                    <button 
+                       onClick={() => setActiveCategory(null)} 
+                       className={`shrink-0 px-6 py-3.5 rounded-2xl font-black text-sm transition-all shadow-sm active:scale-95 outline-none ${!activeCategory ? 'bg-stone-800 text-white shadow-md' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50 hover:border-stone-300'}`}
+                    >
+                      Todos
+                    </button>
+                    {uniqueCategories.map(cat => (
+                       <button 
+                         key={cat as string} 
+                         onClick={() => setActiveCategory(cat as string)} 
+                         className={`shrink-0 px-6 py-3.5 rounded-2xl font-black text-sm transition-all shadow-sm active:scale-95 outline-none ${activeCategory === cat ? 'bg-stone-800 text-white shadow-md' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50 hover:border-stone-300'}`}
+                       >
+                         {cat as string}
+                       </button>
+                    ))}
+                 </div>
+
+                 {/* Products Grid */}
+                 <div className="flex-1 overflow-y-auto p-4 lg:p-6 custom-scrollbar">
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                       {products
+                          .filter(p => !activeCategory || p.category === activeCategory)
+                          .map(p => (
+                          <div key={p.id} onClick={() => addProductToTable(p)} className="bg-white border border-stone-200 rounded-2xl p-5 flex flex-col justify-between cursor-pointer hover:border-red-400 hover:shadow-xl transition-all group active:scale-[0.95] h-40 relative overflow-hidden select-none">
+                             <div className="flex justify-between items-start gap-2 relative z-10">
+                                <h4 className="font-bold text-stone-800 text-base leading-tight drop-shadow-sm">{p.name}</h4>
+                                {p.image_url ? (
+                                   <img src={p.image_url} alt={p.name} className="w-14 h-14 rounded-xl object-cover shrink-0 bg-stone-100 shadow-sm" />
+                                ) : (
+                                   <div className="w-12 h-12 rounded-full bg-stone-50 flex items-center justify-center shrink-0 text-stone-400 group-hover:bg-red-50 group-hover:text-red-500 transition-colors">
+                                      <span className="material-symbols-outlined text-[24px]">add</span>
+                                   </div>
+                                )}
+                             </div>
+                             <div className="mt-auto pt-2 relative z-10 flex items-center justify-between w-full">
+                                <span className="font-black text-red-700 text-xl tracking-tight">${parseFloat(p.price).toLocaleString('es-AR')}</span>
+                             </div>
+                             
+                             {/* Touch Ripple / Background Hover Effect */}
+                             <div className="absolute inset-0 bg-gradient-to-br from-red-50/0 to-red-50/0 group-hover:from-red-50/50 group-hover:to-transparent transition-all z-0"></div>
+                          </div>
+                       ))}
+                    </div>
+                 </div>
+              </div>
+
+              {/* Right Panel: Current Bill / Ticket */}
+              <div className="w-[420px] lg:w-[480px] bg-stone-50 flex flex-col shrink-0 border-l border-stone-200 shadow-2xl z-10">
+                 <div className="p-5 lg:p-6 border-b border-stone-200 bg-white shrink-0">
+                    <div className="flex justify-between items-center">
+                       <h3 className="text-2xl font-black font-headline text-stone-800 tracking-tight">Comanda</h3>
+                       <span className={`inline-flex items-center px-3 py-1 text-[11px] font-black rounded-full uppercase tracking-widest ${
+                         (selectedTable.current_order_items || []).length > 0 ? "bg-emerald-100 text-emerald-800" : "bg-stone-100 text-stone-500"
+                       }`}>
+                         {(selectedTable.current_order_items || []).length > 0 ? "En curso" : "Abierta"}
+                       </span>
+                    </div>
+                 </div>
+
+                 {/* Order Items List */}
+                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar flex flex-col gap-3">
+                    {(selectedTable.current_order_items || []).length === 0 ? (
+                       <div className="text-center text-stone-400 py-10 my-auto flex flex-col items-center select-none">
+                          <span className="material-symbols-outlined text-[64px] mb-4 opacity-30">receipt_long</span>
+                          <span className="text-base font-black text-stone-500">La cuenta está vacía</span>
+                          <span className="text-sm font-bold mt-1 max-w-[200px] leading-tight">Agrega productos tocando el catálogo</span>
+                       </div>
+                    ) : (
+                       (selectedTable.current_order_items || []).map((item, idx, arr) => (
+                          <div key={item.id} className={`bg-white rounded-2xl p-4 flex flex-col gap-3 shadow-sm transition-all relative overflow-hidden ${idx === arr.length - 1 ? 'border-2 border-red-400/50 ring-4 ring-red-50' : 'border border-stone-200 hover:border-stone-300'}`}>
+                             {/* Highlighting the last added logic visually */}
+                             {idx === arr.length - 1 && <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>}
+                             
+                             <div className="flex justify-between items-start gap-3">
+                                <div className="flex-1">
+                                   <p className="font-extrabold text-stone-800 leading-tight text-base">{item.name}</p>
+                                   <p className="text-xs font-bold text-stone-400 mt-1">${((item.price || 0) * 1).toLocaleString('es-AR')} c/u</p>
+                                </div>
+                                <span className="font-black text-stone-800 text-lg">
+                                   ${((item.price || 0) * item.quantity).toLocaleString('es-AR')}
+                                </span>
+                             </div>
+                             
+                             <div className="flex items-center justify-between mt-1 pt-3 border-t border-stone-100">
+                                {/* Quantity Controls */}
+                                <div className="flex items-center bg-stone-100 rounded-xl p-1 border border-stone-200">
+                                   <button onClick={() => updateProductQuantityToTable(item.id, -1)} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm hover:bg-stone-50 text-stone-600 active:bg-stone-200 active:scale-95 transition-all">
+                                      <span className="material-symbols-outlined font-black">remove</span>
+                                   </button>
+                                   <span className="w-12 text-center font-black text-base text-stone-800">{item.quantity}</span>
+                                   <button onClick={() => updateProductQuantityToTable(item.id, 1)} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm hover:bg-stone-50 text-stone-600 active:bg-stone-200 active:scale-95 transition-all">
+                                      <span className="material-symbols-outlined font-black">add</span>
+                                   </button>
+                                </div>
+                                
+                                <button onClick={() => removeProductFromTable(item.id)} className="w-12 h-10 flex items-center justify-center rounded-xl text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 active:scale-95 transition-all">
+                                   <span className="material-symbols-outlined font-black text-[22px]">delete_outline</span>
+                                </button>
+                             </div>
+                          </div>
+                       ))
+                    )}
+                 </div>
+
+                 {/* Totals & Actions block */}
+                 <div className="p-5 lg:p-6 bg-white border-t border-stone-200 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.08)] shrink-0 z-20 relative">
+                    <div className="flex flex-col gap-1.5 mb-5">
+                       <div className="flex justify-between text-sm font-extrabold text-stone-400">
+                          <span>Subtotal</span>
+                          <span>${(selectedTable.current_bill || 0).toLocaleString('es-AR')}</span>
+                       </div>
+                       <div className="flex justify-between text-sm font-extrabold text-stone-400">
+                          <span>Impuestos (Opcional)</span>
+                          <span>$0</span>
+                       </div>
+                       <div className="flex justify-between items-end mt-2 pt-3 border-t-2 border-dashed border-stone-100">
+                          <span className="text-sm font-black uppercase tracking-widest text-[#937b74]">Total Final</span>
+                          <span className="text-[40px] leading-none font-black text-red-800 tracking-tighter">${(selectedTable.current_bill || 0).toLocaleString('es-AR')}</span>
+                       </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                       <button className="col-span-2 bg-[#937b74] hover:bg-[#7a655e] text-white py-5 rounded-2xl font-black text-xl shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-3">
+                          <span className="material-symbols-outlined text-2xl">payments</span>
+                          Cobrar Cuenta
+                       </button>
+                       <button onClick={() => updateTableStatus(selectedTable.id, selectedTable.status, { current_bill: 0, current_order_items: [] })} className="bg-red-50 text-red-700 hover:bg-red-100 py-3.5 rounded-2xl font-black text-sm transition-all flex justify-center items-center gap-2 border border-red-100 active:scale-95">
+                          <span className="material-symbols-outlined text-[20px]">cancel</span>
+                          Limpiar
+                       </button>
+                       <button className="bg-stone-100 text-stone-700 hover:bg-stone-200 py-3.5 rounded-2xl font-black text-sm transition-all flex justify-center items-center gap-2 border border-stone-200 active:scale-95">
+                          <span className="material-symbols-outlined text-[20px]">local_offer</span>
+                          Descuento
+                       </button>
+                    </div>
+                 </div>
+              </div>
+           </div>
         </div>
       )}
     </div>
