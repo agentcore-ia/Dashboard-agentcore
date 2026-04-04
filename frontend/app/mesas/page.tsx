@@ -8,6 +8,7 @@ import EditorPlanoView from "./EditorPlanoView";
 export default function MesasPage() {
   const [activeTab, setActiveTab] = useState<"plano" | "reservas">("plano");
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   if (isEditing) {
     return (
@@ -22,7 +23,7 @@ export default function MesasPage() {
        <div className="flex justify-between items-end mb-2 shrink-0">
          <div>
            <h2 className="text-3xl font-extrabold font-headline tracking-tight text-on-surface">Gestión de Mesas</h2>
-           <p className="text-on-surface-variant mt-1 text-sm">{new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+           <p className="text-on-surface-variant mt-1 text-sm">{selectedDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
            
            <div className="flex items-center gap-6 mt-6 border-b border-stone-200">
              <button
@@ -61,8 +62,8 @@ export default function MesasPage() {
          )}
        </div>
 
-       {activeTab === "plano" && <PlanoView />}
-       {activeTab === "reservas" && <ReservasView />}
+       {activeTab === "plano" && <PlanoView selectedDate={selectedDate} />}
+       {activeTab === "reservas" && <ReservasView selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
     </div>
   );
 }

@@ -36,12 +36,11 @@ function toHHMM(value: string): string {
   return value;
 }
 
-export default function ReservasView() {
+export default function ReservasView({ selectedDate, setSelectedDate }: { selectedDate: Date, setSelectedDate: (d: Date) => void }) {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedResId, setSelectedResId] = useState<string | null>(null);
   const [filter, setFilter] = useState("Todo");
-  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
 
   const isToday = selectedDate.toDateString() === new Date().toDateString();
   const isTomorrow = (() => {
@@ -60,11 +59,9 @@ export default function ReservasView() {
   });
 
   const changeDate = (delta: number) => {
-    setSelectedDate(d => {
-      const nd = new Date(d);
-      nd.setDate(nd.getDate() + delta);
-      return nd;
-    });
+    const nd = new Date(selectedDate);
+    nd.setDate(nd.getDate() + delta);
+    setSelectedDate(nd);
     setSelectedResId(null);
   };
 
@@ -230,12 +227,14 @@ export default function ReservasView() {
       <div className="flex-1 flex gap-6 overflow-hidden min-h-[500px] h-[65vh]">
         {/* Agenda Grid */}
         <div className="flex-1 bg-white rounded-2xl overflow-hidden flex flex-col shadow-sm border border-stone-200 relative">
-          {/* Timeline Header */}
-          <div className="flex border-b border-stone-100 shrink-0">
-            <div className="w-36 flex-shrink-0 p-4 font-bold text-xs text-stone-500 bg-stone-50 border-r border-stone-100 flex items-center">
-              Mesa / Zona
-            </div>
-            <div className="flex-1 flex overflow-x-auto no-scrollbar">
+          <div className="flex-1 overflow-auto custom-scrollbar relative bg-white">
+            <div className="min-w-fit flex flex-col min-h-full">
+              {/* Timeline Header */}
+              <div className="flex border-b border-stone-100 shrink-0 sticky top-0 bg-white z-40">
+                <div className="w-36 flex-shrink-0 p-4 font-bold text-xs text-stone-500 bg-stone-50 border-r border-stone-100 flex items-center sticky left-0 z-50">
+                  Mesa / Zona
+                </div>
+                <div className="flex-1 flex no-scrollbar">
               {timeSlots.map(time => (
                 <div
                   key={time}
@@ -247,10 +246,10 @@ export default function ReservasView() {
             </div>
           </div>
 
-          {/* Grid Rows */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col">
+              {/* Grid Rows */}
+              <div className="flex flex-col relative w-[calc(144px+1100px)]">
 
-            {/* No reservations for this date */}
+                {/* No reservations for this date */}
             {reservations.length === 0 && (
               <div className="flex flex-col items-center justify-center h-48 text-stone-400 gap-3">
                 <span className="material-symbols-outlined text-5xl opacity-30">event_busy</span>
@@ -258,14 +257,14 @@ export default function ReservasView() {
               </div>
             )}
 
-            {/* Unassigned reservas row */}
-            {unassigned.length > 0 && filter === "Todo" && (
-              <div className="flex border-b-2 border-secondary/20 group bg-secondary/5 h-24 shrink-0 relative">
-                <div className="w-36 flex-shrink-0 p-4 bg-secondary/10 border-r border-secondary/20 flex flex-col justify-center z-20">
-                  <span className="font-bold text-secondary text-sm whitespace-nowrap">Sin mesa</span>
-                  <span className="text-[10px] font-bold text-secondary/60 uppercase tracking-widest">Sin asignar</span>
-                </div>
-                <div className="flex-1 relative overflow-hidden flex items-center gap-2 px-3">
+                {/* Unassigned reservas row */}
+                {unassigned.length > 0 && filter === "Todo" && (
+                  <div className="flex border-b-2 border-secondary/20 group bg-secondary/5 h-24 shrink-0 relative">
+                    <div className="w-36 flex-shrink-0 p-4 bg-secondary/10 border-r border-secondary/20 flex flex-col justify-center sticky left-0 z-30">
+                      <span className="font-bold text-secondary text-sm whitespace-nowrap">Sin mesa</span>
+                      <span className="text-[10px] font-bold text-secondary/60 uppercase tracking-widest">Sin asignar</span>
+                    </div>
+                    <div className="w-[1100px] relative overflow-hidden flex items-center gap-2 px-3">
                   {unassigned.map(res => {
                     const isSelected = selectedResId === res.id;
                     return (
@@ -288,23 +287,23 @@ export default function ReservasView() {
               </div>
             )}
 
-            {/* Table rows */}
-            {tables
-              .filter(t => filter === "Todo" || (t.zone ?? "").toLowerCase() === filter.toLowerCase())
-              .map(table => {
-                const tableRes = reservations.filter(r => r.table_id === table.id);
-                return (
-                  <div
-                    key={table.id}
-                    className="flex border-b border-stone-100 group hover:bg-stone-50/50 transition-colors h-24 shrink-0 relative"
-                  >
-                    <div className="w-36 flex-shrink-0 p-4 bg-stone-50/50 border-r border-stone-100 flex flex-col justify-center z-20">
-                      <span className="font-bold text-stone-800 text-sm whitespace-nowrap">{table.name}</span>
-                      <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-                        {table.zone} · {table.capacity}p
-                      </span>
-                    </div>
-                    <div className="flex-1 relative overflow-hidden bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTAwIDBMMTAwIDEwMCIgc3Ryb2tlPSIjZjVmNWY0IiBzdHJva2Utd2lkdGg9IjEiIGZpbGw9Im5vbmUiLz48L3N2Zz4=')]">
+                {/* Table rows */}
+                {tables
+                  .filter(t => filter === "Todo" || (t.zone ?? "").toLowerCase() === filter.toLowerCase())
+                  .map(table => {
+                    const tableRes = reservations.filter(r => r.table_id === table.id);
+                    return (
+                      <div
+                        key={table.id}
+                        className="flex border-b border-stone-100 group hover:bg-stone-50/50 transition-colors h-24 shrink-0 relative"
+                      >
+                        <div className="w-36 flex-shrink-0 p-4 bg-stone-50/50 border-r border-stone-100 flex flex-col justify-center sticky left-0 z-30">
+                          <span className="font-bold text-stone-800 text-sm whitespace-nowrap">{table.name}</span>
+                          <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                            {table.zone} · {table.capacity}p
+                          </span>
+                        </div>
+                        <div className="w-[1100px] relative bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTAwIDBMMTAwIDEwMCIgc3Ryb2tlPSIjZjVmNWY0IiBzdHJva2Utd2lkdGg9IjEiIGZpbGw9Im5vbmUiLz48L3N2Zz4=')]">
                       {tableRes.map(res => {
                         const pos = getSlotPosition(res.start_time, res.end_time);
                         const isSelected = selectedResId === res.id;
@@ -328,10 +327,12 @@ export default function ReservasView() {
                           </div>
                         );
                       })}
-                    </div>
-                  </div>
-                );
-              })}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
           </div>
         </div>
 

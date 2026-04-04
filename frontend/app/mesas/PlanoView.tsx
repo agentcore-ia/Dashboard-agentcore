@@ -22,46 +22,87 @@ export interface Table {
   zone?: string | null;
 }
 
-export default function PlanoView() {
+export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
 
+  const [reservations, setReservations] = useState<any[]>([]);
+
   const fetchTables = async () => {
     const { data, error } = await supabase.from('mesas').select('*');
-    if (!error && data) {
-      setTables(data as Table[]);
-    }
+    if (!error && data) setTables(data as Table[]);
+  };
+
+  const fetchReservations = async () => {
+    const today = selectedDate || new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    const todayStr = `${y}-${m}-${d}`;
+    
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tmrStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+
+    const { data } = await supabase
+      .from('reservas')
+      .select('*')
+      .gte('start_time', todayStr)
+      .lt('start_time', tmrStr)
+      .neq('status', 'cancelled');
+
+    if (data) setReservations(data);
   };
 
   useEffect(() => {
     fetchTables();
+    fetchReservations();
 
-    const channel = supabase.channel('realtime-mesas')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          fetchTables();
-        } else if (payload.eventType === 'UPDATE') {
-          const updated = payload.new as Table;
-          setTables(prev => prev.map(t => t.id === updated.id ? updated : t));
-        } else if (payload.eventType === 'DELETE') {
-          setTables(prev => prev.filter(t => t.id !== payload.old.id));
-        }
-      })
+    const channel = supabase.channel('realtime-mesas-plano')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, fetchTables)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, fetchReservations)
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [selectedDate]);
+
+  const isToday = !selectedDate || selectedDate.toDateString() === new Date().toDateString();
+
+  const derivedTables = tables.map(table => {
+    const res = reservations.find(r => r.table_id === table.id && r.status === 'confirmed');
+    
+    // For today, if it's occupied currently, we might want to prioritize occupied state
+    // But for future dates, we should always show confirmed reservations as 'reserved' 
+    // even if the table is currently "occupied" today.
+    if (res && (!isToday || table.status === 'free')) {
+      const timeMatch = res.start_time.match(/T(\d{2}:\d{2})/);
+      const timeVal = timeMatch ? timeMatch[1] : (res.start_time.includes(':') ? res.start_time.split('T').pop().substring(0,5) : res.start_time);
+      
+      return {
+        ...table,
+        status: 'reserved' as const,
+        reservation_time: timeVal,
+        current_client: res.client_name
+      };
+    }
+    // If we are looking at a future date but there's no reservation, it shouldn't show as occupied!
+    if (!isToday && table.status === 'occupied') {
+        return { ...table, status: 'free' as const, current_client: undefined, time_elapsed: undefined, current_bill: undefined };
+    }
+
+    return table;
+  });
 
   const stats = {
-    free: tables.filter(t => t.status === "free").length,
-    reserved: tables.filter(t => t.status === "reserved").length,
-    occupied: tables.filter(t => t.status === "occupied").length,
-    total: tables.length,
+    free: derivedTables.filter(t => t.status === "free" && t.shape !== "pared" && t.shape !== "puerta" && t.shape !== "terraza").length,
+    reserved: derivedTables.filter(t => t.status === "reserved" && t.shape !== "pared" && t.shape !== "puerta" && t.shape !== "terraza").length,
+    occupied: derivedTables.filter(t => t.status === "occupied" && t.shape !== "pared" && t.shape !== "puerta" && t.shape !== "terraza").length,
+    total: derivedTables.filter(t => t.shape !== "pared" && t.shape !== "puerta" && t.shape !== "terraza").length,
   };
 
-  const selectedTable = tables.find(t => t.id === selectedTableId);
+  const selectedTable = derivedTables.find(t => t.id === selectedTableId);
 
   const updateTableStatus = async (id: string, status: "free" | "occupied" | "reserved", extras?: Partial<Table>) => {
     const { error } = await supabase.from('mesas').update({ status, ...extras }).eq('id', id);
@@ -126,7 +167,7 @@ export default function PlanoView() {
              className="w-[1240px] h-[1000px] relative pointer-events-auto"
              style={{ backgroundImage: 'radial-gradient(#e6e2dc 1px, transparent 1px)', backgroundSize: '32px 32px' }}
           >
-            {tables.map(table => {
+            {derivedTables.map(table => {
               const isSelected = selectedTableId === table.id;
               
               // --- Infraestructura rendering ---
