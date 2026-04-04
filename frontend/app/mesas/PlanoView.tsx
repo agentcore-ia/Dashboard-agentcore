@@ -31,6 +31,11 @@ export interface OrderItem {
   description?: string;
 }
 
+// Payment method options for the checkout modal
+type PaymentMethod = "cash" | "card" | "transfer" | "qr";
+
+const RESTAURANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
@@ -40,6 +45,13 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const [products, setProducts] = useState<any[]>([]);
   const [isMenuDrawerOpen, setIsMenuDrawerOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  // Checkout modal state
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [checkoutSuccess, setCheckoutSuccess] = useState(false);
+  const [discount, setDiscount] = useState<number>(0); // percentage 0-100
 
   const fetchTables = async () => {
     const { data, error } = await supabase.from('mesas').select('*');
@@ -117,6 +129,11 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const uniqueCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
   const selectedTable = derivedTables.find(t => t.id === selectedTableId);
 
+  // Computed totals for checkout
+  const subtotalAmount = selectedTable?.current_bill || 0;
+  const discountAmount = Math.round(subtotalAmount * discount / 100);
+  const totalAmount = subtotalAmount - discountAmount;
+
   const updateTableStatus = async (
     id: string, status: "free" | "occupied" | "reserved",
     extras?: Partial<Table>,
@@ -170,18 +187,98 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
     updateTableStatus(tableId, tableStatus, { current_bill: 0, current_order_items: [] });
   };
 
-  const cobrarCuenta = () => {
+  /**
+   * COBRAR: Saves the order to pedidos + items_pedido, then clears the table.
+   */
+  const procesarCobro = async () => {
     if (!selectedTable) return;
-    updateTableStatus(selectedTable.id, 'free', { current_client: null, time_elapsed: null, current_bill: null, current_order_items: null });
-    setIsMenuDrawerOpen(false);
+    const orderItems = selectedTable.current_order_items || [];
+    if (orderItems.length === 0) return;
+
+    setIsProcessing(true);
+    try {
+      // 1. Insert into pedidos
+      const { data: pedido, error: pedidoError } = await supabase
+        .from('pedidos')
+        .insert({
+          restaurant_id: RESTAURANT_ID,
+          customer_name: selectedTable.current_client || 'Cliente Salón',
+          status: 'completed',
+          delivery_type: 'salon',
+          payment_method: paymentMethod,
+          source: 'salon',
+          subtotal: subtotalAmount,
+          delivery_fee: 0,
+          total: totalAmount,
+          table_id: selectedTable.id,
+          table_name: selectedTable.name,
+          notes: discount > 0 ? `Descuento ${discount}%` : null,
+        })
+        .select('id')
+        .single();
+
+      if (pedidoError) throw pedidoError;
+
+      // 2. Insert items_pedido (product_id is null since menu comes from Sheets, not DB products)
+      const items = orderItems.map(item => ({
+        pedido_id: pedido.id,
+        product_id: null,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        notes: null,
+      }));
+
+      const { error: itemsError } = await supabase.from('items_pedido').insert(items);
+      if (itemsError) throw itemsError;
+
+      // 3. Clear the table
+      await supabase.from('mesas').update({
+        status: 'free',
+        current_client: null,
+        time_elapsed: null,
+        current_bill: null,
+        current_order_items: [],
+      }).eq('id', selectedTable.id);
+
+      setTables(prev => prev.map(t =>
+        t.id === selectedTable.id
+          ? { ...t, status: 'free', current_client: null, time_elapsed: null, current_bill: null, current_order_items: [] }
+          : t
+      ));
+
+      // 4. Show success state
+      setCheckoutSuccess(true);
+      setTimeout(() => {
+        setIsCheckoutOpen(false);
+        setIsMenuDrawerOpen(false);
+        setCheckoutSuccess(false);
+        setSelectedTableId(null);
+        setDiscount(0);
+        setPaymentMethod("cash");
+      }, 2000);
+
+    } catch (err) {
+      console.error("Error al procesar cobro:", err);
+      alert("Error al registrar el cobro. Intente nuevamente.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Table status styles
   const tableTheme = {
-    free:     { badge: "bg-emerald-500 text-white",     border: "border-emerald-300",  ring: "ring-emerald-200", label: "Libre" },
-    occupied: { badge: "bg-red-700 text-white",         border: "border-red-400",      ring: "ring-red-200",     label: "Ocupada" },
-    reserved: { badge: "bg-amber-500 text-white",       border: "border-amber-300",    ring: "ring-amber-200",   label: "Reservada" },
+    free:     { badge: "bg-emerald-500 text-white",  border: "border-emerald-300", ring: "ring-emerald-200", label: "Libre" },
+    occupied: { badge: "bg-red-700 text-white",       border: "border-red-400",    ring: "ring-red-200",    label: "Ocupada" },
+    reserved: { badge: "bg-amber-500 text-white",     border: "border-amber-300",  ring: "ring-amber-200",  label: "Reservada" },
   };
+
+  const paymentMethods: { id: PaymentMethod; label: string; icon: string }[] = [
+    { id: "cash",     label: "Efectivo",    icon: "payments" },
+    { id: "card",     label: "Tarjeta",     icon: "credit_card" },
+    { id: "transfer", label: "Transferencia", icon: "account_balance" },
+    { id: "qr",       label: "QR",          icon: "qr_code_2" },
+  ];
 
   return (
     <div className="flex flex-col gap-4 w-full h-full animate-in fade-in duration-300">
@@ -189,10 +286,10 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
       {/* ── METRIC CARDS ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
         {[
-          { label: "Libres",       value: stats.free,     color: "text-emerald-600",  bg: "bg-emerald-50",    icon: "check_circle" },
-          { label: "Reservadas",   value: stats.reserved, color: "text-amber-600",    bg: "bg-amber-50",      icon: "event" },
-          { label: "Ocupadas",     value: stats.occupied, color: "text-red-700",      bg: "bg-red-50",        icon: "person_pin_circle" },
-          { label: "Total Mesas",  value: stats.total,    color: "text-stone-800",    bg: "bg-stone-100",     icon: "grid_view" },
+          { label: "Libres",      value: stats.free,     color: "text-emerald-600", bg: "bg-emerald-50",  icon: "check_circle" },
+          { label: "Reservadas",  value: stats.reserved, color: "text-amber-600",   bg: "bg-amber-50",    icon: "event" },
+          { label: "Ocupadas",    value: stats.occupied, color: "text-red-700",     bg: "bg-red-50",      icon: "person_pin_circle" },
+          { label: "Total Mesas", value: stats.total,    color: "text-stone-800",   bg: "bg-stone-100",   icon: "grid_view" },
         ].map(card => (
           <div key={card.label} className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-stone-100 flex items-center justify-between">
             <div>
@@ -207,7 +304,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
       </div>
 
       {/* ── FLOOR PLAN + DETAIL PANEL ── */}
-      {/* On mobile: stacked. On lg+: side by side */}
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
 
         {/* Floor Plan */}
@@ -219,9 +315,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
             }
           }}
         >
-          <div
-            id="plano-canvas"
-            className="w-[1100px] min-h-[700px] relative pointer-events-auto"
+          <div id="plano-canvas" className="w-[1100px] min-h-[700px] relative pointer-events-auto"
             style={{ backgroundImage: 'radial-gradient(#d6d3ce 1.5px, transparent 1.5px)', backgroundSize: '28px 28px' }}
           >
             {derivedTables.map(table => {
@@ -238,39 +332,27 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                   }} />
                 );
               }
-
               if (table.shape === 'terraza') {
                 return (
-                  <div key={table.id} className="absolute flex items-center justify-center border-2 border-dashed border-stone-400 pointer-events-none select-none rounded-3xl" style={{ left: table.x, top: table.y, width: table.w, height: table.h }}>
+                  <div key={table.id} className="absolute flex items-center justify-center border-2 border-dashed border-stone-400 pointer-events-none select-none rounded-3xl"
+                    style={{ left: table.x, top: table.y, width: table.w, height: table.h }}>
                     <span className="uppercase tracking-widest text-[10px] opacity-40 font-black px-2 text-center break-words">{table.name || "TERRAZA"}</span>
                   </div>
                 );
               }
 
-              // Real tables
               const theme = tableTheme[table.status] ?? tableTheme.free;
               const isCircle = table.shape === "circle";
               const isBarra = table.shape === "barra";
 
               return (
-                <button
-                  key={table.id}
+                <button key={table.id}
                   onPointerDown={(e) => { e.stopPropagation(); setSelectedTableId(table.id); }}
                   className={`absolute flex flex-col items-center justify-center cursor-pointer transition-all duration-150 active:scale-95 bg-white border-2 select-none focus:outline-none
-                    ${theme.border}
-                    ${isCircle ? "rounded-full" : "rounded-xl"}
-                    ${isSelected ? `ring-4 ${theme.ring} shadow-xl z-10 scale-[1.03]` : "z-0 shadow-sm hover:shadow-md hover:scale-[1.02]"}
-                    ${isBarra ? "flex-row justify-between px-4" : "flex-col"}
-                  `}
+                    ${theme.border} ${isCircle ? "rounded-full" : "rounded-xl"} ${isBarra ? "flex-row justify-between px-4" : "flex-col"}
+                    ${isSelected ? `ring-4 ${theme.ring} shadow-xl z-10 scale-[1.03]` : "z-0 shadow-sm hover:shadow-md hover:scale-[1.02]"}`}
                   style={{ left: `${table.x}px`, top: `${table.y}px`, width: `${table.w}px`, height: `${table.h}px` }}
                 >
-                  {/* Status badge — now INSIDE the card, at the top */}
-                  <div className={`${isBarra ? 'hidden' : 'block'} shrink-0`}>
-                    <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${theme.badge}`}>
-                      {theme.label}
-                    </span>
-                  </div>
-
                   {isBarra ? (
                     <>
                       <div className="flex flex-col text-left">
@@ -285,8 +367,12 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                     </>
                   ) : (
                     <>
+                      <div className="shrink-0">
+                        <span className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${theme.badge}`}>
+                          {theme.label}
+                        </span>
+                      </div>
                       <p className="font-black text-stone-700 text-sm mt-0.5 leading-none">{table.name}</p>
-
                       {table.status === "occupied" && (
                         <div className="flex flex-col items-center mt-1 gap-0.5">
                           <p className="text-[10px] font-bold text-stone-500 truncate max-w-[90%] text-center">{table.current_client || "—"}</p>
@@ -319,20 +405,17 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           </div>
         </div>
 
-        {/* Detail Panel — slides in on mobile as overlay-like bottom sheet, sidebar on desktop */}
+        {/* Detail Panel */}
         {selectedTable && (
           <div className="lg:w-[360px] xl:w-[400px] shrink-0 animate-in fade-in slide-in-from-bottom-2 lg:slide-in-from-right-4 duration-200">
             <div className="bg-white rounded-2xl shadow-lg border border-stone-100 flex flex-col overflow-hidden h-full max-h-[80vh] lg:max-h-full">
-
-              {/* Panel Header */}
+              {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0">
                 <div className="flex items-center gap-3">
                   <h3 className="text-xl font-black text-stone-800">{selectedTable.name}</h3>
                   <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${
                     selectedTable.status === 'free' ? 'bg-emerald-100 text-emerald-700' :
-                    selectedTable.status === 'occupied' ? 'bg-red-100 text-red-700' :
-                    'bg-amber-100 text-amber-700'
-                  }`}>
+                    selectedTable.status === 'occupied' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                     {selectedTable.status === 'free' ? 'Libre' : selectedTable.status === 'occupied' ? 'Ocupada' : 'Reservada'}
                   </span>
                 </div>
@@ -341,12 +424,10 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 </button>
               </div>
 
-              {/* Panel Body — scrollable */}
               <div className="flex-1 overflow-y-auto custom-scrollbar">
-
-                {/* ── OCCUPIED STATE ── */}
+                {/* ── OCCUPIED ── */}
                 {selectedTable.status === 'occupied' && (
-                  <div className="flex flex-col h-full">
+                  <div className="flex flex-col">
                     {/* Client info */}
                     <div className="px-5 py-4 flex items-center gap-3 bg-red-50/50 border-b border-stone-100">
                       <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
@@ -360,7 +441,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                     </div>
 
                     {/* Items */}
-                    <div className="px-5 pt-3 pb-2 flex-1 overflow-y-auto">
+                    <div className="px-5 pt-3 pb-2">
                       <div className="flex justify-between items-center mb-3">
                         <span className="text-[10px] font-black uppercase tracking-widest text-stone-400">Detalle de consumo</span>
                         <span className="text-[10px] font-bold text-stone-400">{(selectedTable.current_order_items || []).reduce((a, i) => a + i.quantity, 0)} ítems</span>
@@ -400,10 +481,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
 
                     {/* Actions */}
                     <div className="p-4 flex flex-col gap-2 shrink-0">
-                      <button
-                        onClick={() => { setActiveCategory(null); setIsMenuDrawerOpen(true); }}
-                        className="w-full bg-red-700 hover:bg-red-800 text-white py-3.5 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md shadow-red-900/20 active:scale-95 transition-all"
-                      >
+                      <button onClick={() => { setActiveCategory(null); setIsMenuDrawerOpen(true); }}
+                        className="w-full bg-red-700 hover:bg-red-800 text-white py-3.5 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md shadow-red-900/20 active:scale-95 transition-all">
                         <span className="material-symbols-outlined text-[18px]">add_circle</span>
                         Agregar productos
                       </button>
@@ -427,9 +506,11 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                         </button>
                       </div>
 
+                      {/* COBRAR button */}
                       <button
-                        onClick={() => updateTableStatus(selectedTable.id, 'free', { current_client: null, time_elapsed: null, current_bill: null, current_order_items: null })}
-                        className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3.5 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md shadow-green-900/20 active:scale-95 transition-all"
+                        onClick={() => setIsCheckoutOpen(true)}
+                        disabled={(selectedTable.current_order_items || []).length === 0}
+                        className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md shadow-green-900/20 active:scale-95 transition-all"
                       >
                         <span className="material-symbols-outlined text-[18px]">payments</span>
                         Cerrar y cobrar
@@ -438,7 +519,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                   </div>
                 )}
 
-                {/* ── FREE STATE ── */}
+                {/* ── FREE ── */}
                 {selectedTable.status === 'free' && (
                   <div className="p-5 flex flex-col gap-5">
                     <div className="bg-stone-50 rounded-xl p-4 flex items-center gap-3">
@@ -452,17 +533,15 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                       <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">Próxima reserva</p>
                       <p className="text-sm text-stone-500">Sin reservas hoy.</p>
                     </div>
-                    <button
-                      onClick={() => updateTableStatus(selectedTable.id, 'occupied', { current_client: 'Cliente Caminante', time_elapsed: '0 min' })}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md active:scale-95 transition-all"
-                    >
+                    <button onClick={() => updateTableStatus(selectedTable.id, 'occupied', { current_client: 'Cliente Caminante', time_elapsed: '0 min' })}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md active:scale-95 transition-all">
                       <span className="material-symbols-outlined text-[18px]">person_add</span>
                       Sentar cliente
                     </button>
                   </div>
                 )}
 
-                {/* ── RESERVED STATE ── */}
+                {/* ── RESERVED ── */}
                 {selectedTable.status === 'reserved' && (
                   <div className="p-5 flex flex-col gap-4">
                     <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
@@ -481,8 +560,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                           updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', reservation_time: null });
                         }
                       }}
-                      className="w-full bg-amber-500 hover:bg-amber-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md active:scale-95 transition-all"
-                    >
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md active:scale-95 transition-all">
                       <span className="material-symbols-outlined text-[18px]">person_add</span>
                       Sentar clientes
                     </button>
@@ -494,8 +572,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                           updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null });
                         }
                       }}
-                      className="w-full text-stone-400 hover:text-red-600 py-2 font-bold text-xs flex items-center justify-center gap-1 transition-colors"
-                    >
+                      className="w-full text-stone-400 hover:text-red-600 py-2 font-bold text-xs flex items-center justify-center gap-1 transition-colors">
                       <span className="material-symbols-outlined text-sm">cancel</span>
                       Cancelar reserva
                     </button>
@@ -510,7 +587,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
       {/* ── BILL MODAL ── */}
       {isBillOpen && selectedTable && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center animate-in fade-in p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl relative">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
             <div className="flex items-center justify-between p-5 border-b border-stone-100">
               <h3 className="text-lg font-black">Editar cuenta · {selectedTable.name}</h3>
               <button onClick={() => setIsBillOpen(false)} className="w-8 h-8 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400">
@@ -520,12 +597,9 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
             <div className="p-5">
               <div className="text-4xl font-black text-red-700 mb-5">${(selectedTable.current_bill || 0).toLocaleString('es-AR')}</div>
               <div className="flex gap-2">
-                <input
-                  type="number"
-                  placeholder="Monto a agregar..."
+                <input type="number" placeholder="Monto a agregar..."
                   className="flex-1 px-4 py-3 border border-stone-200 rounded-xl outline-none focus:border-red-700 transition-colors text-sm"
-                  value={billAmountToAdd}
-                  onChange={(e) => setBillAmountToAdd(e.target.value)}
+                  value={billAmountToAdd} onChange={(e) => setBillAmountToAdd(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       const val = parseFloat(billAmountToAdd);
@@ -535,8 +609,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 />
                 <button
                   onClick={() => { const val = parseFloat(billAmountToAdd); if (!isNaN(val)) { updateTableStatus(selectedTable.id, selectedTable.status, { current_bill: (selectedTable.current_bill || 0) + val }); setBillAmountToAdd(""); } }}
-                  className="bg-red-700 text-white px-4 rounded-xl font-bold hover:bg-red-800 active:scale-95 transition-all"
-                >
+                  className="bg-red-700 text-white px-4 rounded-xl font-bold hover:bg-red-800 active:scale-95 transition-all">
                   <span className="material-symbols-outlined mt-1">add</span>
                 </button>
               </div>
@@ -549,6 +622,120 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                   Cerrar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CHECKOUT MODAL ── */}
+      {isCheckoutOpen && selectedTable && (
+        <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-in fade-in p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
+
+            {/* Success overlay */}
+            {checkoutSuccess && (
+              <div className="absolute inset-0 bg-emerald-700 flex flex-col items-center justify-center z-10 animate-in fade-in">
+                <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mb-4">
+                  <span className="material-symbols-outlined text-white text-[48px]">check_circle</span>
+                </div>
+                <p className="text-white font-black text-2xl">¡Cobro registrado!</p>
+                <p className="text-white/70 text-sm mt-1">{selectedTable.name} · ${totalAmount.toLocaleString('es-AR')}</p>
+              </div>
+            )}
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-stone-100">
+              <div>
+                <h3 className="text-xl font-black text-stone-800">Cobrar cuenta</h3>
+                <p className="text-xs text-stone-400 font-medium mt-0.5">{selectedTable.name} · {selectedTable.current_client}</p>
+              </div>
+              <button onClick={() => { setIsCheckoutOpen(false); setDiscount(0); }} className="w-9 h-9 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400 transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <div className="px-6 py-4 overflow-y-auto max-h-[70vh]">
+
+              {/* Order summary (compact) */}
+              <div className="bg-stone-50 rounded-2xl p-4 mb-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Resumen del pedido</p>
+                <div className="flex flex-col gap-2 max-h-36 overflow-y-auto">
+                  {(selectedTable.current_order_items || []).map(item => (
+                    <div key={item.id} className="flex items-center justify-between text-sm">
+                      <span className="text-stone-600 font-medium">{item.quantity}x {item.name}</span>
+                      <span className="font-bold text-stone-800">${((item.price || 0) * item.quantity).toLocaleString('es-AR')}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Discount */}
+                <div className="mt-3 pt-3 border-t border-stone-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-stone-500">Descuento</span>
+                    <span className="text-xs font-black text-stone-700">{discount}%</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {[0, 5, 10, 15, 20, 25].map(pct => (
+                      <button key={pct} onClick={() => setDiscount(pct)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-all active:scale-95 ${discount === pct ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-100'}`}>
+                        {pct > 0 ? `${pct}%` : 'Sin'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Totals */}
+                <div className="mt-4 pt-3 border-t border-dashed border-stone-200 space-y-1">
+                  <div className="flex justify-between text-sm text-stone-500">
+                    <span>Subtotal</span>
+                    <span className="font-bold">${subtotalAmount.toLocaleString('es-AR')}</span>
+                  </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-sm text-emerald-600">
+                      <span>Descuento ({discount}%)</span>
+                      <span className="font-bold">-${discountAmount.toLocaleString('es-AR')}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-baseline pt-2">
+                    <span className="text-sm font-black uppercase tracking-widest text-stone-500">TOTAL</span>
+                    <span className="text-4xl font-black text-stone-900">${totalAmount.toLocaleString('es-AR')}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment method */}
+              <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Método de pago</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+                {paymentMethods.map(pm => (
+                  <button key={pm.id} onClick={() => setPaymentMethod(pm.id)}
+                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 font-bold text-xs transition-all active:scale-95 ${paymentMethod === pm.id ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'}`}>
+                    <span className={`material-symbols-outlined text-[22px] ${paymentMethod === pm.id ? 'text-white' : 'text-stone-500'}`}>{pm.icon}</span>
+                    {pm.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* CONFIRM button */}
+              <button
+                onClick={procesarCobro}
+                disabled={isProcessing}
+                className="w-full h-16 rounded-2xl font-black text-lg flex items-center justify-center gap-3 bg-emerald-700 hover:bg-emerald-800 text-white transition-all active:scale-[0.98] disabled:opacity-60 shadow-lg shadow-green-900/20 mb-4"
+              >
+                {isProcessing ? (
+                  <>
+                    <svg className="animate-spin w-5 h-5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-2xl">payments</span>
+                    Confirmar cobro · ${totalAmount.toLocaleString('es-AR')}
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -567,8 +754,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           >
             {/* LEFT: Catalog */}
             <div className="flex-1 flex flex-col min-w-0 border-b lg:border-b-0 lg:border-r border-stone-200">
-
-              {/* Header */}
               <div className="h-14 lg:h-16 px-4 lg:px-5 flex items-center gap-3 bg-white border-b border-stone-200 shrink-0">
                 <button onClick={() => setIsMenuDrawerOpen(false)} className="w-9 h-9 lg:w-10 lg:h-10 rounded-xl bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 active:scale-90 transition-all">
                   <span className="material-symbols-outlined text-[20px]">arrow_back</span>
@@ -584,7 +769,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 )}
               </div>
 
-              {/* Categories */}
               <div className="flex items-center gap-2 px-3 lg:px-4 py-2.5 lg:py-3 bg-white border-b border-stone-200 overflow-x-auto hide-scroll shrink-0">
                 <button onClick={() => setActiveCategory(null)}
                   className={`shrink-0 h-9 lg:h-10 px-4 lg:px-5 rounded-xl font-black text-xs lg:text-sm transition-all duration-100 active:scale-95 ${!activeCategory ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}>
@@ -598,7 +782,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 ))}
               </div>
 
-              {/* Product Grid */}
               <div className="flex-1 overflow-y-auto p-3 lg:p-4 custom-scrollbar">
                 {filteredProducts.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-stone-400 select-none">
@@ -619,12 +802,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                               {existingItem.quantity}
                             </div>
                           )}
-                          <span className="font-bold text-stone-800 text-xs lg:text-sm leading-snug line-clamp-2 group-active:text-white transition-colors">
-                            {p.name}
-                          </span>
-                          <span className="font-black text-red-700 text-base lg:text-lg mt-1.5 group-active:text-red-200 transition-colors">
-                            ${(p.price || 0).toLocaleString('es-AR')}
-                          </span>
+                          <span className="font-bold text-stone-800 text-xs lg:text-sm leading-snug line-clamp-2 group-active:text-white transition-colors">{p.name}</span>
+                          <span className="font-black text-red-700 text-base lg:text-lg mt-1.5 group-active:text-red-200 transition-colors">${(p.price || 0).toLocaleString('es-AR')}</span>
                         </button>
                       );
                     })}
@@ -635,8 +814,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
 
             {/* RIGHT: Comanda */}
             <div className="w-full lg:w-[360px] xl:w-[420px] flex flex-col bg-white shrink-0 max-h-[45vh] lg:max-h-full">
-
-              {/* Comanda Header */}
               <div className="h-14 lg:h-16 px-4 lg:px-5 flex items-center justify-between border-b border-stone-200 shrink-0">
                 <div className="flex items-center gap-2.5">
                   <span className="font-black text-stone-800 text-base lg:text-lg">Comanda</span>
@@ -653,7 +830,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 )}
               </div>
 
-              {/* Items */}
               <div className="flex-1 overflow-y-auto custom-scrollbar px-3 lg:px-4 py-2 lg:py-3 flex flex-col gap-1.5 lg:gap-2">
                 {orderItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-stone-300 select-none py-6">
@@ -665,8 +841,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                     const isLast = idx === orderItems.length - 1;
                     return (
                       <div key={item.id}
-                        className={`rounded-xl px-3 lg:px-4 py-2.5 lg:py-3 flex items-center gap-2 lg:gap-3 transition-all duration-150 ${isLast ? 'bg-emerald-50 border-2 border-emerald-300' : 'bg-stone-50 border border-stone-100'}`}
-                      >
+                        className={`rounded-xl px-3 lg:px-4 py-2.5 lg:py-3 flex items-center gap-2 lg:gap-3 transition-all duration-150 ${isLast ? 'bg-emerald-50 border-2 border-emerald-300' : 'bg-stone-50 border border-stone-100'}`}>
                         <div className="flex items-center gap-1 shrink-0">
                           <button onClick={() => updateProductQuantity(item.id, -1)}
                             className="w-7 h-7 lg:w-8 lg:h-8 rounded-lg bg-white border border-stone-200 hover:bg-stone-100 active:scale-90 flex items-center justify-center text-stone-600 transition-all">
@@ -693,7 +868,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 )}
               </div>
 
-              {/* Bottom: Totals + Actions */}
               <div className="bg-white border-t border-stone-100 p-3 lg:p-4 shrink-0">
                 <div className="flex justify-between items-center text-xs font-bold text-stone-400 mb-1">
                   <span>{itemCount} ítem{itemCount !== 1 ? 's' : ''} · Subtotal</span>
@@ -701,17 +875,19 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 </div>
                 <div className="flex justify-between items-baseline border-t border-dashed border-stone-100 pt-2 mb-3">
                   <span className="text-xs font-black uppercase tracking-widest text-stone-400">TOTAL</span>
-                  <span className="text-3xl lg:text-4xl xl:text-[48px] leading-none font-black text-stone-900 tracking-tighter">
+                  <span className="text-3xl lg:text-4xl xl:text-[44px] leading-none font-black text-stone-900 tracking-tighter">
                     ${(selectedTable.current_bill || 0).toLocaleString('es-AR')}
                   </span>
                 </div>
-                <button onClick={cobrarCuenta} disabled={orderItems.length === 0}
-                  className="w-full h-12 lg:h-14 rounded-xl lg:rounded-2xl font-black text-base lg:text-lg flex items-center justify-center gap-2 transition-all duration-100 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-700 hover:bg-emerald-800 text-white shadow-md"
+                <button
+                  onClick={() => { setIsMenuDrawerOpen(false); setIsCheckoutOpen(true); }}
+                  disabled={orderItems.length === 0}
+                  className="w-full h-12 lg:h-14 rounded-xl lg:rounded-2xl font-black text-base lg:text-lg flex items-center justify-center gap-2 transition-all duration-100 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-700 hover:bg-emerald-800 text-white shadow-md mb-2"
                 >
                   <span className="material-symbols-outlined text-xl">payments</span>
                   Cobrar cuenta
                 </button>
-                <div className="grid grid-cols-2 gap-2 mt-2">
+                <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => clearTable(selectedTable.id, selectedTable.status)}
                     className="h-9 lg:h-11 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-600 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all">
                     <span className="material-symbols-outlined text-[16px]">delete_sweep</span>
