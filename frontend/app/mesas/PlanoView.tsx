@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { printTicket } from "./printTicket";
 
 export interface Table {
   id: string;
@@ -247,7 +248,19 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           : t
       ));
 
-      // 4. Show success state
+      // 4. Print ticket
+      printTicket({
+        tableName: selectedTable.name,
+        clientName: selectedTable.current_client,
+        items: orderItems.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
+        subtotal: subtotalAmount,
+        discount,
+        discountAmount,
+        total: totalAmount,
+        paymentMethod,
+      });
+
+      // 5. Show success state
       setCheckoutSuccess(true);
       setTimeout(() => {
         setIsCheckoutOpen(false);
