@@ -20,11 +20,16 @@ export interface Table {
   current_bill?: number | null;
   reservation_time?: string | null;
   zone?: string | null;
+  active_reserva_id?: string | null;
 }
 
 export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const [tables, setTables] = useState<Table[]>([]);
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null);
+
+  // Billing functionality
+  const [isBillOpen, setIsBillOpen] = useState(false);
+  const [billAmountToAdd, setBillAmountToAdd] = useState("");
 
   const [reservations, setReservations] = useState<any[]>([]);
 
@@ -84,7 +89,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         ...table,
         status: 'reserved' as const,
         reservation_time: timeVal,
-        current_client: res.client_name
+        current_client: res.client_name,
+        active_reserva_id: res.id
       };
     }
     // If we are looking at a future date but there's no reservation, it shouldn't show as occupied!
@@ -104,10 +110,20 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
 
   const selectedTable = derivedTables.find(t => t.id === selectedTableId);
 
-  const updateTableStatus = async (id: string, status: "free" | "occupied" | "reserved", extras?: Partial<Table>) => {
+  const updateTableStatus = async (id: string, status: "free" | "occupied" | "reserved", extras?: Partial<Table>, reservaConfig?: { id: string, status: 'seated' | 'cancelled' | 'completed' }) => {
     const { error } = await supabase.from('mesas').update({ status, ...extras }).eq('id', id);
     if (!error) {
-      setTables(prev => prev.map(t => t.id === id ? { ...t, status, ...extras } : t));
+      let finalExtras = { ...extras };
+      if (reservaConfig) {
+        await supabase.from('reservas').update({ status: reservaConfig.status }).eq('id', reservaConfig.id);
+        finalExtras.active_reserva_id = null;
+        finalExtras.reservation_time = null;
+      }
+      setTables(prev => prev.map(t => t.id === id ? { ...t, status, ...finalExtras } : t));
+      if (reservaConfig) {
+          // Re-fetch reservations so derivedTables logic updates if needed
+          fetchReservations();
+      }
     }
   };
 
@@ -352,7 +368,10 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                         <span className="material-symbols-outlined text-stone-500">move_up</span>
                         Cambiar
                       </button>
-                      <button className="bg-stone-50 py-3 rounded-xl font-bold text-stone-600 flex flex-col items-center gap-1 hover:bg-stone-100 transition-colors border border-stone-200 text-xs shadow-sm">
+                      <button 
+                        onClick={() => setIsBillOpen(true)}
+                        className="bg-stone-50 py-3 rounded-xl font-bold text-stone-600 flex flex-col items-center gap-1 hover:bg-stone-100 transition-colors border border-stone-200 text-xs shadow-sm"
+                      >
                         <span className="material-symbols-outlined text-stone-500">receipt_long</span>
                         Cuenta
                       </button>
@@ -405,14 +424,26 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
 
                   <div className="flex flex-col gap-3 pt-4 border-t border-stone-100">
                     <button 
-                      onClick={() => updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', reservation_time: null })}
+                      onClick={() => {
+                        if (selectedTable.active_reserva_id) {
+                           updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', current_client: selectedTable.current_client }, { id: selectedTable.active_reserva_id, status: 'seated' });
+                        } else {
+                           updateTableStatus(selectedTable.id, 'occupied', { time_elapsed: '0 min', reservation_time: null });
+                        }
+                      }}
                       className="w-full bg-secondary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-secondary/20 hover:bg-secondary-container transition-all active:scale-95 text-sm"
                     >
                       <span className="material-symbols-outlined text-[18px]">person_add</span>
                       Sentar clientes
                     </button>
                     <button 
-                      onClick={() => updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null })}
+                      onClick={() => {
+                        if (selectedTable.active_reserva_id) {
+                           updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null }, { id: selectedTable.active_reserva_id, status: 'cancelled' });
+                        } else {
+                           updateTableStatus(selectedTable.id, 'free', { current_client: null, reservation_time: null });
+                        }
+                      }}
                       className="w-full text-stone-400 py-2 font-medium text-xs hover:text-red-600 transition-colors flex items-center justify-center gap-1 mt-2"
                     >
                        <span className="material-symbols-outlined text-sm">cancel</span>
@@ -425,6 +456,70 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           </aside>
         )}
       </div>
+      
+      {/* Bill Slide-over / Modal */}
+      {isBillOpen && selectedTable && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center animate-in fade-in">
+          <div className="bg-surface-container-lowest p-6 rounded-2xl w-[400px] shadow-2xl relative">
+            <button onClick={() => setIsBillOpen(false)} className="absolute top-4 right-4 p-2 text-stone-400 hover:text-stone-800 rounded-full">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+            <h3 className="text-xl font-extrabold font-headline mb-4">Mesa: {selectedTable.name}</h3>
+            
+            <div className="mb-6 flex flex-col gap-2">
+              <label className="text-sm font-bold text-on-surface-variant uppercase tracking-widest">Cuenta Actual</label>
+              <div className="text-4xl font-extrabold text-primary">€{(selectedTable.current_bill || 0).toFixed(2)}</div>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="number"
+                placeholder="Monto a agregar..."
+                className="flex-1 px-4 py-3 border border-stone-200 rounded-xl outline-none focus:border-red-800 transition-colors"
+                value={billAmountToAdd}
+                onChange={(e) => setBillAmountToAdd(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const val = parseFloat(billAmountToAdd);
+                    if (!isNaN(val)) {
+                      updateTableStatus(selectedTable.id, selectedTable.status, { current_bill: (selectedTable.current_bill || 0) + val });
+                      setBillAmountToAdd("");
+                    }
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  const val = parseFloat(billAmountToAdd);
+                  if (!isNaN(val)) {
+                    updateTableStatus(selectedTable.id, selectedTable.status, { current_bill: (selectedTable.current_bill || 0) + val });
+                    setBillAmountToAdd("");
+                  }
+                }}
+                className="bg-primary text-white font-bold p-3 rounded-xl shadow hover:bg-primary-container active:scale-95 transition-all"
+              >
+                <span className="material-symbols-outlined mt-1">add</span>
+              </button>
+            </div>
+            
+            <div className="flex gap-2 mt-4 pt-4 border-t border-stone-100">
+               <button 
+                  onClick={() => updateTableStatus(selectedTable.id, selectedTable.status, { current_bill: 0 })}
+                  className="flex-1 py-2 font-bold text-xs text-red-600 bg-red-50 hover:bg-red-100 rounded-lg flex items-center gap-1 justify-center transition-colors"
+               >
+                 <span className="material-symbols-outlined text-[14px]">remove_shopping_cart</span>
+                 Limpiar Cuenta
+               </button>
+               <button 
+                  onClick={() => setIsBillOpen(false)}
+                  className="flex-1 py-2 font-bold text-xs text-stone-600 bg-stone-100 hover:bg-stone-200 rounded-lg flex items-center gap-1 justify-center transition-colors"
+               >
+                 Cerrar
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
