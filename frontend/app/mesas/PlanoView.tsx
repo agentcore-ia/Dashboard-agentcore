@@ -21,6 +21,16 @@ export interface Table {
   reservation_time?: string | null;
   zone?: string | null;
   active_reserva_id?: string | null;
+  current_order_items?: OrderItem[] | null;
+}
+
+export interface OrderItem {
+  id: string;
+  product_id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  description?: string;
 }
 
 export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
@@ -32,6 +42,9 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const [billAmountToAdd, setBillAmountToAdd] = useState("");
 
   const [reservations, setReservations] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [isMenuDrawerOpen, setIsMenuDrawerOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const fetchTables = async () => {
     const { data, error } = await supabase.from('mesas').select('*');
@@ -59,9 +72,15 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
     if (data) setReservations(data);
   };
 
+  const fetchProducts = async () => {
+    const { data } = await supabase.from('products').select('*').eq('available', true);
+    if (data) setProducts(data);
+  };
+
   useEffect(() => {
     fetchTables();
     fetchReservations();
+    fetchProducts();
 
     const channel = supabase.channel('realtime-mesas-plano')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, fetchTables)
@@ -108,6 +127,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
     total: derivedTables.filter(t => t.shape !== "pared" && t.shape !== "puerta" && t.shape !== "terraza").length,
   };
 
+  const uniqueCategories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
+
   const selectedTable = derivedTables.find(t => t.id === selectedTableId);
 
   const updateTableStatus = async (id: string, status: "free" | "occupied" | "reserved", extras?: Partial<Table>, reservaConfig?: { id: string, status: 'seated' | 'cancelled' | 'completed' }) => {
@@ -125,6 +146,39 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           fetchReservations();
       }
     }
+  };
+
+  const addProductToTable = (product: any) => {
+     if (!selectedTable) return;
+     const currentItems = selectedTable.current_order_items || [];
+     const existingItemIndex = currentItems.findIndex(item => item.product_id === product.id);
+     
+     let newItems;
+     if (existingItemIndex >= 0) {
+        newItems = [...currentItems];
+        newItems[existingItemIndex].quantity += 1;
+     } else {
+        newItems = [...currentItems, {
+           id: Math.random().toString(36).substring(7),
+           product_id: product.id,
+           name: product.name,
+           price: parseFloat(product.price),
+           quantity: 1,
+           description: product.description
+        }];
+     }
+     
+     const newBill = newItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+     updateTableStatus(selectedTable.id, selectedTable.status, { current_order_items: newItems, current_bill: newBill });
+     setIsMenuDrawerOpen(false);
+  };
+
+  const removeProductFromTable = (itemId: string) => {
+     if (!selectedTable) return;
+     const currentItems = selectedTable.current_order_items || [];
+     const newItems = currentItems.filter(i => i.id !== itemId);
+     const newBill = newItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+     updateTableStatus(selectedTable.id, selectedTable.status, { current_order_items: newItems, current_bill: newBill });
   };
 
   return (
@@ -331,51 +385,99 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
               </div>
 
               {selectedTable.status === 'occupied' && (
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-1">
-                     <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-60">Cliente</label>
-                     <p className="text-lg font-bold text-on-surface">{selectedTable.current_client}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1 bg-stone-50 p-3 rounded-xl border border-stone-100">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-60">Tiempo</label>
-                      <p className="text-xl font-headline font-extrabold text-on-surface">{selectedTable.time_elapsed || "00:00"}</p>
+                <div className="flex flex-col h-full overflow-hidden">
+                  {/* Reservation Banner (if applies) */}
+                  <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 flex gap-4 items-center mb-6">
+                    <div className="w-10 h-10 rounded-full bg-white border border-stone-200 flex items-center justify-center text-red-700 shadow-sm shrink-0">
+                      <span className="material-symbols-outlined text-lg">bookmark</span>
                     </div>
-                    <div className="flex flex-col gap-1 bg-stone-50 p-3 rounded-xl border border-stone-100">
-                       <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant opacity-60">Cuenta</label>
-                       <p className="text-xl font-headline font-extrabold text-primary">€{(selectedTable.current_bill || 0).toFixed(2)}</p>
+                    <div>
+                      <p className="text-[10px] font-black uppercase text-red-600 tracking-widest mb-0.5">LLEGADA DEL CLIENTE</p>
+                      <p className="font-bold text-stone-800 text-sm leading-tight">{selectedTable.current_client}</p>
+                      <p className="text-xs font-semibold text-stone-500">{selectedTable.time_elapsed || "0 min"}</p>
                     </div>
                   </div>
 
-                  <div className="bg-indigo-50/50 p-4 rounded-xl flex gap-3 border border-indigo-100">
-                    <span className="material-symbols-outlined text-indigo-500">auto_awesome</span>
-                    <p className="text-xs leading-relaxed text-indigo-900 font-medium">
-                      <span className="font-bold flex mb-1">Predicción AI</span>
-                      Mesa libre en <span className="font-extrabold text-indigo-600">25 min</span> basado en sus pedidos y ritmo de la zona.
-                    </p>
+                  {/* Detalle de Consumo Header */}
+                  <div className="flex justify-between items-center mb-3 text-stone-500 font-bold uppercase tracking-wider text-[10px] pb-2 border-b border-stone-100">
+                    <span>Detalle de Consumo</span>
+                    <span>{(selectedTable.current_order_items || []).reduce((acc, item) => acc + item.quantity, 0)} items</span>
                   </div>
 
-                  <div className="flex flex-col gap-3 pt-4 border-t border-stone-100">
-                    <button 
-                      onClick={() => updateTableStatus(selectedTable.id, 'free', { current_client: null, time_elapsed: null, current_bill: null })}
-                      className="w-full bg-primary text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:bg-primary-container transition-all active:scale-95 text-sm"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                      Finalizar mesa
+                  {/* List of Items */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4 py-2 pr-2">
+                    {(selectedTable.current_order_items || []).length === 0 ? (
+                      <div className="text-center text-stone-400 py-6 text-sm font-medium">No hay productos en la cuenta</div>
+                    ) : (
+                      (selectedTable.current_order_items || []).map((item) => (
+                        <div key={item.id} className="flex gap-3 relative group">
+                          <div className="w-6 h-6 rounded-full bg-red-50 text-red-600 flex justify-center items-center font-bold text-xs shrink-0 border border-red-100 mt-0.5 group-hover:bg-red-100 transition-colors">
+                             {item.quantity}
+                          </div>
+                          <div className="flex-1">
+                             <p className="font-bold text-stone-800 leading-tight mb-0.5 text-sm">{item.name}</p>
+                             {item.description && <p className="text-[11px] text-stone-500 leading-tight">{item.description}</p>}
+                          </div>
+                          <div className="font-bold text-stone-800 text-sm">
+                             ${((item.price || 0) * item.quantity).toLocaleString('es-AR')}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Total to pay */}
+                  <div className="flex justify-between items-end border-t border-dashed border-stone-200 mt-4 pt-4 mb-4 pb-2">
+                     <span className="font-extrabold uppercase tracking-widest text-[#937b74] text-xs">Total a Pagar</span>
+                     <span className="text-3xl font-black text-red-800 tracking-tight">${(selectedTable.current_bill || 0).toLocaleString('es-AR')}</span>
+                  </div>
+
+                  {/* Bottom Actions Sticky Section */}
+                  <div className="bg-stone-50 -mx-6 lg:-mx-8 -mb-6 lg:-mb-8 p-6 lg:p-8 pt-6">
+                    {/* Horizontal Categories */}
+                    <div className="flex overflow-x-auto gap-2 pb-4 custom-scrollbar snap-x mb-2 hide-scroll">
+                      {uniqueCategories.map(cat => (
+                        <button key={cat as string} onClick={() => { setActiveCategory(cat as string); setIsMenuDrawerOpen(true); }} className="snap-start shrink-0 px-4 py-1.5 rounded-full bg-stone-200 text-stone-600 font-bold text-xs hover:bg-stone-300 transition-colors flex items-center gap-1.5 shadow-sm">
+                          {cat === 'Pizzas' && <span className="material-symbols-outlined text-[14px]">local_pizza</span>}
+                          {cat === 'Hamburguesas' && <span className="material-symbols-outlined text-[14px]">lunch_dining</span>}
+                          {cat === 'Bebidas' && <span className="material-symbols-outlined text-[14px]">local_bar</span>}
+                          {cat === 'Postres' && <span className="material-symbols-outlined text-[14px]">icecream</span>}
+                          {cat as string}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button onClick={() => { setActiveCategory(null); setIsMenuDrawerOpen(true); }} className="w-full bg-[#9f2a1c] text-white py-4 rounded-2xl font-black flex justify-center items-center gap-2 hover:bg-[#852317] hover:scale-[1.02] shadow-xl shadow-red-900/20 active:scale-95 transition-all mb-4 text-sm">
+                      <span className="material-symbols-outlined">add_circle</span>
+                      Agregar producto
                     </button>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button className="bg-stone-50 py-3 rounded-xl font-bold text-stone-600 flex flex-col items-center gap-1 hover:bg-stone-100 transition-colors border border-stone-200 text-xs shadow-sm">
-                        <span className="material-symbols-outlined text-stone-500">move_up</span>
-                        Cambiar
+
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <button onClick={() => setIsBillOpen(true)} className="bg-white py-3 rounded-2xl font-bold text-stone-700 shadow-sm border border-stone-200 hover:bg-stone-50 active:scale-95 transition-all text-xs flex justify-center items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px]">edit</span>
+                        Editar manual
                       </button>
-                      <button 
-                        onClick={() => setIsBillOpen(true)}
-                        className="bg-stone-50 py-3 rounded-xl font-bold text-stone-600 flex flex-col items-center gap-1 hover:bg-stone-100 transition-colors border border-stone-200 text-xs shadow-sm"
-                      >
-                        <span className="material-symbols-outlined text-stone-500">receipt_long</span>
-                        Cuenta
+                      <button onClick={() => updateTableStatus(selectedTable.id, selectedTable.status, { current_bill: 0, current_order_items: [] })} className="bg-white py-3 rounded-2xl font-bold text-stone-700 shadow-sm border border-stone-200 hover:bg-stone-50 active:scale-95 transition-all text-xs flex justify-center items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px]">delete</span>
+                        Limpiar cuenta
+                      </button>
+                      <button className="bg-white py-3 rounded-2xl font-bold text-stone-700 shadow-sm border border-stone-200 hover:bg-stone-50 active:scale-95 transition-all text-xs flex justify-center items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px]">call_split</span>
+                        Dividir cuenta
+                      </button>
+                      <button className="bg-white py-3 rounded-2xl font-bold text-stone-700 shadow-sm border border-stone-200 hover:bg-stone-50 active:scale-95 transition-all text-xs flex justify-center items-center gap-2">
+                        <span className="material-symbols-outlined text-[16px]">transform</span>
+                        Cambiar mesa
                       </button>
                     </div>
+
+                    <button 
+                      onClick={() => updateTableStatus(selectedTable.id, 'free', { current_client: null, time_elapsed: null, current_bill: null, current_order_items: null })}
+                      className="w-full bg-[#00743b] text-white py-4 rounded-2xl font-black flex justify-center items-center gap-2 hover:bg-[#005a2e] hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-green-900/20 text-sm"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">payments</span>
+                      Cerrar cuenta
+                    </button>
                   </div>
                 </div>
               )}
@@ -517,6 +619,69 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                  Cerrar
                </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Menu Overlay Drawer */}
+      {isMenuDrawerOpen && selectedTable && (
+        <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in">
+          <div className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" onClick={() => setIsMenuDrawerOpen(false)} />
+          <div className="w-[450px] max-w-full bg-surface-container-lowest h-full relative shadow-2xl flex flex-col slide-in-from-right animate-in border-l border-stone-200 pointer-events-auto">
+             <div className="p-6 border-b border-stone-100 flex justify-between items-center bg-white z-10 sticky top-0">
+               <div>
+                  <h3 className="text-xl font-black font-headline text-stone-800">Menú de Productos</h3>
+                  <p className="text-xs font-bold text-stone-400 mt-1 uppercase tracking-widest">Agregando a {selectedTable.name}</p>
+               </div>
+               <button onClick={() => setIsMenuDrawerOpen(false)} className="w-10 h-10 bg-stone-100 rounded-full flex items-center justify-center text-stone-600 hover:bg-stone-200 transition-colors">
+                  <span className="material-symbols-outlined font-bold">close</span>
+               </button>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto bg-stone-50/50 p-6">
+                <div className="flex overflow-x-auto gap-2 pb-4 hide-scroll sticky top-0 bg-stone-50/50 pt-2 z-10 backdrop-blur-sm">
+                   <button 
+                      onClick={() => setActiveCategory(null)} 
+                      className={`shrink-0 px-4 py-2 rounded-xl font-bold text-xs transition-colors shadow-sm ${!activeCategory ? 'bg-red-800 text-white' : 'bg-white text-stone-600 border border-stone-200'}`}
+                   >
+                     Todos
+                   </button>
+                   {uniqueCategories.map(cat => (
+                      <button 
+                        key={cat as string} 
+                        onClick={() => setActiveCategory(cat as string)} 
+                        className={`shrink-0 px-4 py-2 rounded-xl font-bold text-xs transition-colors shadow-sm ${activeCategory === cat ? 'bg-red-800 text-white' : 'bg-white text-stone-600 border border-stone-200'}`}
+                      >
+                        {cat as string}
+                      </button>
+                   ))}
+                </div>
+
+                <div className="grid gap-4 mt-2 mb-20">
+                   {products
+                      .filter(p => !activeCategory || p.category === activeCategory)
+                      .map(p => (
+                      <div key={p.id} onClick={() => addProductToTable(p)} className="bg-white border border-stone-200 rounded-2xl p-4 flex gap-4 cursor-pointer hover:border-red-300 hover:shadow-md transition-all group active:scale-[0.98]">
+                         {p.image_url ? (
+                            <img src={p.image_url} alt={p.name} className="w-16 h-16 rounded-xl object-cover shrink-0 bg-stone-100" />
+                         ) : (
+                            <div className="w-16 h-16 rounded-xl bg-stone-100 flex items-center justify-center shrink-0 text-stone-400">
+                               <span className="material-symbols-outlined text-3xl">fastfood</span>
+                            </div>
+                         )}
+                         <div className="flex-1">
+                            <div className="flex justify-between items-start gap-2">
+                               <h4 className="font-bold text-stone-800 text-sm leading-tight">{p.name}</h4>
+                               <span className="font-black text-red-700 text-sm whitespace-nowrap">${parseFloat(p.price).toLocaleString('es-AR')}</span>
+                            </div>
+                            {p.description && <p className="text-xs text-stone-500 mt-1 line-clamp-2 leading-snug">{p.description}</p>}
+                         </div>
+                         <div className="w-8 h-8 rounded-full bg-red-50 text-red-600 border border-red-100 flex items-center justify-center self-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="material-symbols-outlined text-[18px]">add</span>
+                         </div>
+                      </div>
+                   ))}
+                </div>
+             </div>
           </div>
         </div>
       )}
