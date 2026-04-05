@@ -11,7 +11,8 @@ const navItems = [
   { href: "/menu", label: "Menú", icon: "menu_book" },
   { href: "/mesas", label: "Mesas", icon: "table_restaurant" },
   { href: "/analytics", label: "Analíticas", icon: "analytics" },
-  { href: "/modulos", label: "Módulos", icon: "smart_toy" },
+  { href: "/gerente-ia", label: "Gerente IA", icon: "smart_toy", highlight: true },
+  { href: "/modulos", label: "Módulos", icon: "extension" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
 ];
 
@@ -46,9 +47,7 @@ export default function Sidebar({ isOpen, onClose }: { isOpen?: boolean; onClose
 
         {/* Navigation Links */}
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto no-scrollbar">
-          {navItems.map(({ href, label, icon }) => {
-            // Note: Since Home is "/", exact match is preferred for active state,
-            // otherwise all routes starting with "/" will trigger it.
+          {navItems.map(({ href, label, icon, highlight }) => {
             const active = href === "/" ? pathname === href : pathname.startsWith(href);
 
             return (
@@ -59,11 +58,18 @@ export default function Sidebar({ isOpen, onClose }: { isOpen?: boolean; onClose
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl font-headline font-semibold text-sm transition-all duration-200 ${
                   active
                     ? "text-orange-900 border-r-4 border-orange-900 bg-orange-50 scale-[0.98] active:opacity-80"
+                    : highlight
+                    ? "text-blue-700 hover:text-blue-900 hover:bg-blue-50 border border-blue-100 bg-blue-50/50"
                     : "text-stone-500 hover:text-stone-900 hover:bg-stone-100"
                 }`}
               >
-                <span className="material-symbols-outlined">{icon}</span>
+                <span className={`material-symbols-outlined ${active ? "" : highlight ? "text-blue-600" : ""}`}>{icon}</span>
                 <span>{label}</span>
+                {highlight && !active && (
+                  <span className="ml-auto text-[9px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+                    IA
+                  </span>
+                )}
               </Link>
             );
           })}
