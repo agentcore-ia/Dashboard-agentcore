@@ -28,8 +28,8 @@ async function fetchBusinessContext() {
     const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
 
     const [pedidosHoyRes, pedidosMesRes, mesasRes, productosRes] = await Promise.allSettled([
-      supabase.from('pedidos').select('*').gte('created_at', past24Hours),
-      supabase.from('pedidos').select('*').gte('created_at', thirtyDaysAgo),
+      supabase.from('pedidos').select('*, items_pedido(*)').gte('created_at', past24Hours),
+      supabase.from('pedidos').select('*, items_pedido(*)').gte('created_at', thirtyDaysAgo),
       supabase.from('mesas').select('*'),
       supabase.from('productos').select('*'),
     ]);
@@ -65,7 +65,7 @@ async function fetchBusinessContext() {
     // Top products from order items
     const productCount: Record<string, number> = {};
     pedidosMes.forEach((p) => {
-      const items = Array.isArray(p.items) ? p.items : Array.isArray(p.productos) ? p.productos : [];
+      const items = Array.isArray(p.items_pedido) ? p.items_pedido : Array.isArray(p.items) ? p.items : Array.isArray(p.productos) ? p.productos : [];
       items.forEach((item: any) => {
         const n = item.name || item.nombre || item.producto || 'Desconocido';
         productCount[n] = (productCount[n] || 0) + (Number(item.quantity) || Number(item.cantidad) || 1);
