@@ -191,8 +191,15 @@ async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusi
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
       if (text) return text;
+      
       console.error('OpenAI issue:', JSON.stringify(data));
-    } catch (e) { console.error('OpenAI fetch error:', e); }
+      if (data?.error) {
+        return `⚠️ **Error de OpenAI**: ${data.error.message}\n\n*Asegúrate de que la API key sea correcta y de tener saldo/créditos en tu cuenta de OpenAI (platform.openai.com).*`;
+      }
+    } catch (e: any) { 
+      console.error('OpenAI fetch error:', e); 
+      return `⚠️ **Error de conexión**: ${e.message}`;
+    }
   }
 
   // Rule-based fallback (always works, uses real data)
