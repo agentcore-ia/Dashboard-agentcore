@@ -17,6 +17,7 @@ async function fetchBusinessContext() {
     mes: { pedidos: 0, ventasPorDia: {} as Record<string, { total: number; count: number }> },
     mesas: { ocupadas: 0, libres: 0, total: 0 },
     productos: { total: 0, topVentas: [] as Array<{ nombre: string; cantidad: number }>, catalogo: [] as any[] },
+    clientes: { total: 0, recientes: 0, topClientes: [] as Array<{ nombre: string; telefono: string; compras: number; gastado: number }> },
   };
 
   try {
@@ -27,17 +28,19 @@ async function fetchBusinessContext() {
     const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
     const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [pedidosHoyRes, pedidosMesRes, mesasRes, productosRes] = await Promise.allSettled([
+    const [pedidosHoyRes, pedidosMesRes, mesasRes, productosRes, clientesRes] = await Promise.allSettled([
       supabase.from('pedidos').select('*, items_pedido(*)').gte('created_at', past24Hours),
-      supabase.from('pedidos').select('*, items_pedido(*)').gte('created_at', thirtyDaysAgo),
+      supabase.from('pedidos').select('*, items_pedido(*), clientes(*)').gte('created_at', thirtyDaysAgo),
       supabase.from('mesas').select('*'),
       supabase.from('productos').select('*'),
+      supabase.from('clientes').select('*'),
     ]);
 
     const pedidosHoy: any[] = pedidosHoyRes.status === 'fulfilled' ? (pedidosHoyRes.value.data || []) : [];
     const pedidosMes: any[] = pedidosMesRes.status === 'fulfilled' ? (pedidosMesRes.value.data || []) : [];
     const mesas: any[] = mesasRes.status === 'fulfilled' ? (mesasRes.value.data || []) : [];
     const productos: any[] = productosRes.status === 'fulfilled' ? (productosRes.value.data || []) : [];
+    const clientesData: any[] = clientesRes.status === 'fulfilled' ? (clientesRes.value.data || []) : [];
 
     // Daily stats (last 24 hours to avoid UTC split)
     const ventasHoy = pedidosHoy.reduce((s, p) => s + (Number(p.total) || Number(p.monto) || 0), 0);
@@ -86,6 +89,26 @@ async function fetchBusinessContext() {
     const cambio = ventasSemanaAnt > 0
       ? Math.round(((ventasSemana - ventasSemanaAnt) / ventasSemanaAnt) * 100) : 0;
 
+    // Top clients computation
+    const clientStats: Record<string, { nombre: string; telefono: string; compras: number; gastado: number }> = {};
+    pedidosMes.forEach((p) => {
+      const phone = p.customer_phone || (p.clientes && p.clientes.phone) || 'Varios/Efectivo';
+      if (phone === 'Varios/Efectivo' && !p.customer_name) return; // skip anon 
+      const name = p.customer_name || (p.clientes && p.clientes.name) || 'Desconocido';
+      const total = Number(p.total) || Number(p.monto) || 0;
+      if (!clientStats[phone]) {
+        clientStats[phone] = { nombre: name, telefono: phone, compras: 0, gastado: 0 };
+      }
+      clientStats[phone].compras += 1;
+      clientStats[phone].gastado += total;
+    });
+
+    const topClientes = Object.values(clientStats)
+      .sort((a, b) => b.gastado - a.gastado)
+      .slice(0, 10);
+
+    const clientesRecientesMes = Object.keys(clientStats).length;
+
     return {
       hoy: { ventas: ventasHoy, pedidos: pedidosHoy.length, ticketPromedio, horaPico },
       semana: { ventas: ventasSemana, cambio },
@@ -104,6 +127,11 @@ async function fetchBusinessContext() {
           categoria: p.category || p.categoria,
         })),
       },
+      clientes: {
+        total: clientesData.length,
+        recientes: clientesRecientesMes,
+        topClientes
+      }
     };
   } catch (e) {
     console.error('fetchBusinessContext error:', e);
@@ -148,6 +176,9 @@ async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusi
     topProductos: ctx.productos.topVentas.slice(0, 5),
     ventasPorDia: ctx.mes.ventasPorDia,
     totalProductosCatalogo: ctx.productos.total,
+    topClientes: ctx.clientes.topClientes.slice(0, 5),
+    totalClientes: ctx.clientes.total,
+    clientesRecientes: ctx.clientes.recientes,
   });
 
   const systemPrompt = `Eres el Gerente IA de un restaurante argentino. Analizás datos reales del negocio y das respuestas claras, directas y accionables en español rioplatense. Usá emojis para facilitar la lectura. Incluí números reales, comparaciones y recomendaciones concretas. Datos actuales del restaurante: ${ctxStr}. Respondé de forma estructurada, máximo 300 palabras.`;
@@ -209,7 +240,8 @@ async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusi
   const isBasicQuery = q.includes('ventas') || q.includes('resumen') || q.includes('hoy') || q.includes('día') || 
                        q.includes('dia') || q.includes('product') || q.includes('promoci') || q.includes('vend') || 
                        q.includes('popular') || q.includes('mesa') || q.includes('hora') || q.includes('pico') || 
-                       q.includes('tráfico') || q.includes('trafico') || q.includes('semana') || q.includes('seman');
+                       q.includes('tráfico') || q.includes('trafico') || q.includes('semana') || q.includes('seman') ||
+                       q.includes('cliente') || q.includes('frecuente') || q.includes('comprador');
 
   if (!isBasicQuery) {
     return `⚠️ **Cerebro Inteligente Apagado**
@@ -230,10 +262,15 @@ Intentá hacer preguntas simples como "resumen del día", "top productos" o "mes
   if (q.includes('hora') || q.includes('pico') || q.includes('tráfico') || q.includes('trafico'))
     return `⏰ **Análisis horario**\n\nHora pico (últimas 24hs): ${ctx.hoy.horaPico}\n\n📅 **Ventas por día (último mes):**\n${Object.entries(ctx.mes.ventasPorDia).map(([d, v]) => `• ${d}: ${v.count} pedidos ($${v.total.toLocaleString('es-AR')})`).join('\n') || 'Sin datos aún'}\n\n💡 Identificá los días flojos y creá promos especiales para potenciar esos momentos.`;
 
+  if (q.includes('cliente') || q.includes('frecuente') || q.includes('comprador')) {
+    if (ctx.clientes.topClientes.length === 0) return 'Aún no hay suficientes datos de clientes este mes.';
+    return `👥 **Clientes Destacados del Mes**\n\nEste mes interactuaste con **${ctx.clientes.recientes}** clientes únicos. Tu base total es de **${ctx.clientes.total}** clientes históricos.\n\n👑 **Top 3 Clientes**:\n${ctx.clientes.topClientes.slice(0, 3).map((c, i) => `${i + 1}. **${c.nombre}**: ${c.compras} pedidos ($${c.gastado.toLocaleString('es-AR')})`).join('\n')}\n\n💡 *Tip: Ofrecele un descuento especial a tu mejor cliente.*`;
+  }
+
   if (q.includes('semana') || q.includes('seman'))
     return `📅 **Resumen últimos 7 días**\n\n💰 Ventas: $${ctx.semana.ventas.toLocaleString('es-AR')}\n📊 Variación vs semana anterior: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%\n\n${ctx.semana.cambio < 0 ? '⚠️ Las ventas bajaron. Considerá activar promociones para recuperar el ritmo.' : ctx.semana.cambio > 10 ? '🚀 Excelente semana! Las ventas crecen.' : '✅ Ventas estables.'}`;
 
-  return `🤖 Hola! Soy el Gerente IA.\n\n📊 **Estado actual:**\n• Ventas (24hs): $${ctx.hoy.ventas.toLocaleString('es-AR')}\n• Pedidos (24hs): ${ctx.hoy.pedidos}\n• Mesas: ${ctx.mesas.ocupadas}/${ctx.mesas.total}\n• Crecimiento semanal: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%`;
+  return `🤖 Hola! Soy el Gerente IA.\n\n📊 **Estado actual:**\n• Ventas (24hs): $${ctx.hoy.ventas.toLocaleString('es-AR')}\n• Pedidos (24hs): ${ctx.hoy.pedidos}\n• Top cliente mes: ${ctx.clientes.topClientes[0]?.nombre || 'N/A'}\n• Mesas: ${ctx.mesas.ocupadas}/${ctx.mesas.total}\n• Cres. Semanal: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%`;
 }
 
 // ── POST ──────────────────────────────────────────────────

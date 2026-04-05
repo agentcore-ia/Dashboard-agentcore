@@ -30,7 +30,9 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const convResult = await pool.query(`
-      SELECT c.*, cl.name AS customer_name, cl.phone AS customer_phone, cl.address AS customer_address
+      SELECT c.*, cl.name AS customer_name, cl.phone AS customer_phone, cl.address AS customer_address,
+      (SELECT COUNT(*) FROM pedidos p WHERE p.cliente_id = cl.id) AS customer_compras,
+      (SELECT COALESCE(SUM(p.total), 0) FROM pedidos p WHERE p.cliente_id = cl.id) AS customer_gastado
       FROM conversaciones c JOIN clientes cl ON cl.id = c.cliente_id
       WHERE c.id = $1
     `, [req.params.id]);
