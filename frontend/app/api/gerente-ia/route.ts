@@ -3,173 +3,137 @@ import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const openaiKey = process.env.OPENAI_API_KEY;
-const geminiKey = process.env.GEMINI_API_KEY;
+// ── Lazy Supabase init (avoids build-time env errors) ─────
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) throw new Error('Supabase env vars not set');
+  return createClient(url, key);
+}
 
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// ── Fetch all business context from Supabase ──────────────
+// ── Fetch business context from Supabase ──────────────────
 async function fetchBusinessContext() {
+  const sb = getSupabase();
   const today = new Date().toISOString().split('T')[0];
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [pedidosHoy, pedidosMes, mesas, productos] = await Promise.allSettled([
-    supabase
-      .from('pedidos')
-      .select('*')
-      .gte('created_at', today)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('pedidos')
-      .select('*')
-      .gte('created_at', thirtyDaysAgo)
-      .order('created_at', { ascending: false }),
-    supabase.from('mesas').select('*'),
-    supabase.from('productos').select('*'),
+  const [pedidosHoyRes, pedidosMesRes, mesasRes, productosRes] = await Promise.allSettled([
+    sb.from('pedidos').select('*').gte('created_at', today).order('created_at', { ascending: false }),
+    sb.from('pedidos').select('*').gte('created_at', thirtyDaysAgo).order('created_at', { ascending: false }),
+    sb.from('mesas').select('*'),
+    sb.from('productos').select('*'),
   ]);
 
-  const pedidosHoyData = pedidosHoy.status === 'fulfilled' ? pedidosHoy.value.data || [] : [];
-  const pedidosMesData = pedidosMes.status === 'fulfilled' ? pedidosMes.value.data || [] : [];
-  const mesasData = mesas.status === 'fulfilled' ? mesas.value.data || [] : [];
-  const productosData = productos.status === 'fulfilled' ? productos.value.data || [] : [];
+  const pedidosHoy: any[] = pedidosHoyRes.status === 'fulfilled' ? (pedidosHoyRes.value.data || []) : [];
+  const pedidosMes: any[] = pedidosMesRes.status === 'fulfilled' ? (pedidosMesRes.value.data || []) : [];
+  const mesas: any[] = mesasRes.status === 'fulfilled' ? (mesasRes.value.data || []) : [];
+  const productos: any[] = productosRes.status === 'fulfilled' ? (productosRes.value.data || []) : [];
 
-  // ── Analytics calculations ──────────────────────────────
-  const ventasHoy = pedidosHoyData.reduce((s: number, p: any) => s + (p.total || p.monto || 0), 0);
-  const pedidosHoyCount = pedidosHoyData.length;
-  const ticketPromedio = pedidosHoyCount > 0 ? Math.round(ventasHoy / pedidosHoyCount) : 0;
+  // Daily stats
+  const ventasHoy = pedidosHoy.reduce((s, p) => s + (Number(p.total) || Number(p.monto) || 0), 0);
+  const ticketPromedio = pedidosHoy.length > 0 ? Math.round(ventasHoy / pedidosHoy.length) : 0;
 
-  // Sales by day of week (last 30 days)
-  const ventasPorDia: Record<string, { total: number; count: number }> = {};
+  // Hour distribution
+  const ventasPorHora: Record<number, number> = {};
+  pedidosHoy.forEach((p) => {
+    const hora = new Date(p.created_at).getHours();
+    ventasPorHora[hora] = (ventasPorHora[hora] || 0) + 1;
+  });
+  const horaPicoEntry = Object.entries(ventasPorHora).sort(([, a], [, b]) => b - a)[0];
+  const horaPico = horaPicoEntry ? `${horaPicoEntry[0]}:00hs (${horaPicoEntry[1]} pedidos)` : 'Sin datos';
+
+  // Day of week distribution
   const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-  pedidosMesData.forEach((p: any) => {
+  const ventasPorDia: Record<string, { total: number; count: number }> = {};
+  pedidosMes.forEach((p) => {
     const d = dias[new Date(p.created_at).getDay()];
     if (!ventasPorDia[d]) ventasPorDia[d] = { total: 0, count: 0 };
-    ventasPorDia[d].total += p.total || p.monto || 0;
+    ventasPorDia[d].total += Number(p.total) || Number(p.monto) || 0;
     ventasPorDia[d].count += 1;
   });
 
-  // Top products (from items in pedidos)
+  // Top products
   const productCount: Record<string, number> = {};
-  pedidosMesData.forEach((p: any) => {
+  pedidosMes.forEach((p) => {
     const items = p.items || p.productos || [];
     if (Array.isArray(items)) {
       items.forEach((item: any) => {
         const n = item.name || item.nombre || item.producto || 'Desconocido';
-        productCount[n] = (productCount[n] || 0) + (item.quantity || item.cantidad || 1);
+        productCount[n] = (productCount[n] || 0) + (Number(item.quantity) || Number(item.cantidad) || 1);
       });
     }
   });
-  const topProductos = Object.entries(productCount)
+  const topVentas = Object.entries(productCount)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10)
-    .map(([nombre, cant]) => ({ nombre, cantidad: cant }));
+    .map(([nombre, cantidad]) => ({ nombre, cantidad }));
 
-  // Sales per hour (today)
-  const ventasPorHora: Record<number, number> = {};
-  pedidosHoyData.forEach((p: any) => {
-    const hora = new Date(p.created_at).getHours();
-    ventasPorHora[hora] = (ventasPorHora[hora] || 0) + 1;
-  });
-  const horaPico = Object.entries(ventasPorHora).sort(([, a], [, b]) => b - a)[0];
-
-  // Mesas status
-  const mesasOcupadas = mesasData.filter((m: any) => m.status === 'occupied').length;
-  const mesasLibres = mesasData.filter((m: any) => m.status === 'free').length;
-
-  // Last 7 days comparison
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const ventasSemana = pedidosMesData
-    .filter((p: any) => p.created_at >= sevenDaysAgo)
-    .reduce((s: number, p: any) => s + (p.total || p.monto || 0), 0);
-  const ventasSemanaAnterior = pedidosMesData
-    .filter((p: any) => p.created_at >= fourteenDaysAgo && p.created_at < sevenDaysAgo)
-    .reduce((s: number, p: any) => s + (p.total || p.monto || 0), 0);
-  const cambioPorcentual =
-    ventasSemanaAnterior > 0
-      ? Math.round(((ventasSemana - ventasSemanaAnterior) / ventasSemanaAnterior) * 100)
-      : 0;
+  // Weekly comparison
+  const ventasSemana = pedidosMes
+    .filter((p) => p.created_at >= sevenDaysAgo)
+    .reduce((s, p) => s + (Number(p.total) || Number(p.monto) || 0), 0);
+  const ventasSemanaAnterior = pedidosMes
+    .filter((p) => p.created_at >= fourteenDaysAgo && p.created_at < sevenDaysAgo)
+    .reduce((s, p) => s + (Number(p.total) || Number(p.monto) || 0), 0);
+  const cambioPorcentual = ventasSemanaAnterior > 0
+    ? Math.round(((ventasSemana - ventasSemanaAnterior) / ventasSemanaAnterior) * 100)
+    : 0;
 
   return {
-    hoy: {
-      ventas: ventasHoy,
-      pedidos: pedidosHoyCount,
-      ticketPromedio,
-      horaPico: horaPico ? `${horaPico[0]}:00hs (${horaPico[1]} pedidos)` : 'Sin datos',
-    },
-    semana: {
-      ventas: ventasSemana,
-      cambio: cambioPorcentual,
-    },
-    mes: {
-      pedidos: pedidosMesData.length,
-      ventasPorDia,
-    },
+    hoy: { ventas: ventasHoy, pedidos: pedidosHoy.length, ticketPromedio, horaPico },
+    semana: { ventas: ventasSemana, cambio: cambioPorcentual },
+    mes: { pedidos: pedidosMes.length, ventasPorDia },
     mesas: {
-      ocupadas: mesasOcupadas,
-      libres: mesasLibres,
-      total: mesasData.length,
+      ocupadas: mesas.filter((m) => m.status === 'occupied').length,
+      libres: mesas.filter((m) => m.status === 'free').length,
+      total: mesas.length,
     },
     productos: {
-      total: productosData.length,
-      topVentas: topProductos,
-      catalogo: productosData
-        .slice(0, 30)
-        .map((p: any) => ({ nombre: p.name || p.nombre, precio: p.price || p.precio, categoria: p.category || p.categoria })),
+      total: productos.length,
+      topVentas,
+      catalogo: productos.slice(0, 30).map((p) => ({
+        nombre: p.name || p.nombre,
+        precio: p.price || p.precio,
+        categoria: p.category || p.categoria,
+      })),
     },
   };
 }
 
-// ── Auto-insights generator ───────────────────────────────
-async function generateInsights(ctx: any) {
-  const insights: Array<{ tipo: 'warning' | 'trend' | 'stock' | 'info'; mensaje: string }> = [];
+// ── Auto insights ─────────────────────────────────────────
+function generateInsights(ctx: Awaited<ReturnType<typeof fetchBusinessContext>>) {
+  const insights: Array<{ tipo: string; mensaje: string }> = [];
 
-  if (ctx.semana.cambio < -10) {
-    insights.push({ tipo: 'warning', mensaje: `Ventas bajaron ${Math.abs(ctx.semana.cambio)}% vs la semana anterior` });
-  } else if (ctx.semana.cambio > 15) {
-    insights.push({ tipo: 'trend', mensaje: `Ventas crecieron ${ctx.semana.cambio}% vs la semana anterior 🚀` });
-  }
+  if (ctx.semana.cambio < -10)
+    insights.push({ tipo: 'warning', mensaje: `Ventas bajaron ${Math.abs(ctx.semana.cambio)}% vs semana anterior` });
+  else if (ctx.semana.cambio > 15)
+    insights.push({ tipo: 'trend', mensaje: `Ventas crecieron ${ctx.semana.cambio}% vs semana anterior 🚀` });
 
-  if (ctx.productos.topVentas.length > 0) {
-    insights.push({ tipo: 'trend', mensaje: `Producto tendencia: ${ctx.productos.topVentas[0].nombre} (${ctx.productos.topVentas[0].cantidad} pedidos este mes)` });
-  }
+  if (ctx.productos.topVentas.length > 0)
+    insights.push({ tipo: 'trend', mensaje: `Tendencia: ${ctx.productos.topVentas[0].nombre} (${ctx.productos.topVentas[0].cantidad} pedidos este mes)` });
 
-  if (ctx.mesas.ocupadas > 0) {
-    insights.push({ tipo: 'info', mensaje: `${ctx.mesas.ocupadas} mesa${ctx.mesas.ocupadas !== 1 ? 's' : ''} ocupada${ctx.mesas.ocupadas !== 1 ? 's' : ''} ahora mismo` });
-  }
+  if (ctx.mesas.ocupadas > 0)
+    insights.push({ tipo: 'info', mensaje: `${ctx.mesas.ocupadas} mesa${ctx.mesas.ocupadas !== 1 ? 's' : ''} ocupada${ctx.mesas.ocupadas !== 1 ? 's' : ''} ahora` });
 
-  if (ctx.hoy.pedidos === 0) {
+  if (ctx.hoy.pedidos === 0)
     insights.push({ tipo: 'warning', mensaje: 'No hay pedidos registrados hoy todavía' });
-  }
 
-  // Find slowest day
-  const diasVentas = Object.entries(ctx.mes.ventasPorDia as Record<string, { total: number; count: number }>)
-    .sort(([, a], [, b]) => a.total - b.total);
-  if (diasVentas.length > 0) {
+  const diasVentas = Object.entries(ctx.mes.ventasPorDia).sort(([, a], [, b]) => a.total - b.total);
+  if (diasVentas.length > 0)
     insights.push({ tipo: 'info', mensaje: `Día con menos ventas del mes: ${diasVentas[0][0]}` });
-  }
 
   return insights;
 }
 
-// ── Call AI (OpenAI or Gemini) ────────────────────────────
-async function callAI(question: string, context: any): Promise<string> {
-  const systemPrompt = `Eres el Gerente IA de un restaurante. Analizas datos del negocio y das respuestas claras, concisas y accionables en español. 
-  
-  Usa emojis para facilitar la lectura. Cuando corresponda, incluye:
-  - Números específicos del negocio
-  - Comparaciones con períodos anteriores
-  - Recomendaciones concretas y accionables
-  - Identifica oportunidades y riesgos
-  
-  Contexto actual del restaurante:
-  ${JSON.stringify(context, null, 2)}
-  
-  Responde de forma estructurada, con secciones claras usando emojis. Sé directo y no uses más de 300 palabras a menos que sea necesario.`;
+// ── Call AI ───────────────────────────────────────────────
+async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusinessContext>>): Promise<string> {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
 
-  // Try Gemini first
+  const systemPrompt = `Eres el Gerente IA de un restaurante. Analizas los datos del negocio y das respuestas claras, concisas y accionables en español. Usa emojis. Incluye números reales, comparaciones y recomendaciones accionables. Datos actuales del restaurante: ${JSON.stringify(ctx)}. Responde de forma estructurada. Máximo 300 palabras.`;
+
   if (geminiKey) {
     try {
       const res = await fetch(
@@ -178,26 +142,17 @@ async function callAI(question: string, context: any): Promise<string> {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: `${systemPrompt}\n\nPregunta del dueño: ${question}` }
-                ]
-              }
-            ],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+            contents: [{ parts: [{ text: `${systemPrompt}\n\nPregunta: ${question}` }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
           }),
         }
       );
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (text) return text;
-    } catch (e) {
-      console.error('Gemini error:', e);
-    }
+    } catch (e) { console.error('Gemini error:', e); }
   }
 
-  // Fallback to OpenAI
   if (openaiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -216,80 +171,44 @@ async function callAI(question: string, context: any): Promise<string> {
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
       if (text) return text;
-    } catch (e) {
-      console.error('OpenAI error:', e);
-    }
+    } catch (e) { console.error('OpenAI error:', e); }
   }
 
-  // Fallback: rule-based response
-  return generateRuleBasedResponse(question, context);
-}
-
-// ── Rule-based fallback when no AI key configured ─────────
-function generateRuleBasedResponse(question: string, ctx: any): string {
+  // Fallback rule-based
   const q = question.toLowerCase();
+  if (q.includes('ventas') || q.includes('resumen') || q.includes('hoy') || q.includes('día'))
+    return `📊 **Resumen del día**\n\n💰 Ventas: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n📦 Pedidos: ${ctx.hoy.pedidos}\n🎯 Ticket promedio: $${ctx.hoy.ticketPromedio.toLocaleString('es-AR')}\n⏰ Hora pico: ${ctx.hoy.horaPico}\n\n📈 Esta semana vs anterior: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%\n${ctx.productos.topVentas[0] ? `\n🔥 Más vendido: **${ctx.productos.topVentas[0].nombre}**` : ''}`;
 
-  if (q.includes('ventas') || q.includes('resumen') || q.includes('hoy') || q.includes('día')) {
-    return `📊 **Resumen del día**
+  if (q.includes('producto') || q.includes('promoci'))
+    return `🏆 **Top productos (último mes)**\n\n${ctx.productos.topVentas.slice(0, 5).map((p, i) => `${i + 1}. ${p.nombre}: ${p.cantidad} pedidos`).join('\n')}\n\n💡 Creá combos o promociones con los más vendidos para subir el ticket promedio.`;
 
-💰 Ventas: $${ctx.hoy.ventas.toLocaleString('es-AR')}
-📦 Pedidos: ${ctx.hoy.pedidos}
-🎯 Ticket promedio: $${ctx.hoy.ticketPromedio.toLocaleString('es-AR')}
-⏰ Hora pico: ${ctx.hoy.horaPico}
+  if (q.includes('mesa'))
+    return `🪑 **Mesas ahora**\n\n✅ Ocupadas: ${ctx.mesas.ocupadas}\n⚪ Libres: ${ctx.mesas.libres}\n📊 Total: ${ctx.mesas.total}\nOcupación: ${ctx.mesas.total > 0 ? Math.round((ctx.mesas.ocupadas / ctx.mesas.total) * 100) : 0}%`;
 
-📈 Esta semana: $${ctx.semana.ventas.toLocaleString('es-AR')} (${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}% vs semana anterior)
-
-${ctx.productos.topVentas.length > 0 ? `🔥 Producto más vendido del mes: **${ctx.productos.topVentas[0]?.nombre}** (${ctx.productos.topVentas[0]?.cantidad} pedidos)` : ''}`;
-  }
-
-  if (q.includes('producto') || q.includes('promoci') || q.includes('vender')) {
-    const tops = ctx.productos.topVentas.slice(0, 3).map((p: any, i: number) => `${i + 1}. ${p.nombre} (${p.cantidad} pedidos)`).join('\n');
-    return `🏆 **Productos más vendidos del mes**\n\n${tops}\n\n💡 **Recomendación:** Destacá estos productos en el menú y creá combos con los más populares para aumentar el ticket promedio.`;
-  }
-
-  if (q.includes('hora') || q.includes('pico') || q.includes('tráfico')) {
-    const horasMes = Object.entries(ctx.mes.ventasPorDia as Record<string, { total: number; count: number }>)
-      .map(([dia, data]) => `${dia}: ${data.count} pedidos ($${data.total.toLocaleString('es-AR')})`)
-      .join('\n');
-    return `⏰ **Análisis de horarios y días**\n\nHora pico hoy: ${ctx.hoy.horaPico}\n\n📅 Ventas por día (último mes):\n${horasMes}\n\n💡 Los días con menos ventas son oportunidades para crear promociones especiales.`;
-  }
-
-  if (q.includes('mesa')) {
-    return `🪑 **Estado de Mesas**\n\n✅ Ocupadas: ${ctx.mesas.ocupadas}\n⚪ Libres: ${ctx.mesas.libres}\n📊 Total: ${ctx.mesas.total}\n\nOcupación actual: ${Math.round((ctx.mesas.ocupadas / ctx.mesas.total) * 100)}%`;
-  }
-
-  return `🤖 **Gerente IA**\n\nEsta es una respuesta generada localmente. Para análisis avanzados con IA, configurá GEMINI_API_KEY o OPENAI_API_KEY en las variables de entorno.\n\n📊 **Resumen rápido:**\n• Ventas hoy: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n• Pedidos hoy: ${ctx.hoy.pedidos}\n• Mesas ocupadas: ${ctx.mesas.ocupadas}/${ctx.mesas.total}`;
+  return `🤖 **Gerente IA**\n\nResumen rápido:\n• Ventas hoy: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n• Pedidos: ${ctx.hoy.pedidos}\n• Mesas ocupadas: ${ctx.mesas.ocupadas}/${ctx.mesas.total}\n\nConfigurá OPENAI_API_KEY en environment para respuestas avanzadas con IA.`;
 }
 
-// ── Main POST handler ─────────────────────────────────────
+// ── POST ──────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
     const { question } = await request.json();
-    if (!question?.trim()) {
-      return NextResponse.json({ error: 'La pregunta no puede estar vacía' }, { status: 400 });
-    }
-
-    const [context, insights] = await Promise.all([
-      fetchBusinessContext(),
-      fetchBusinessContext().then(generateInsights),
-    ]);
-
-    const answer = await callAI(question, context);
-
-    return NextResponse.json({ answer, insights, context: { hoy: context.hoy, semana: context.semana } });
+    if (!question?.trim()) return NextResponse.json({ error: 'Pregunta vacía' }, { status: 400 });
+    const ctx = await fetchBusinessContext();
+    const [answer, insights] = await Promise.all([callAI(question, ctx), Promise.resolve(generateInsights(ctx))]);
+    return NextResponse.json({ answer, insights, context: { hoy: ctx.hoy, semana: ctx.semana } });
   } catch (err: any) {
-    console.error('Gerente IA error:', err);
-    return NextResponse.json({ error: 'Error al procesar la consulta', details: err.message }, { status: 500 });
+    console.error('Gerente IA POST error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
-// ── GET: fetch only insights (for auto-refresh) ───────────
+// ── GET (insights only) ───────────────────────────────────
 export async function GET() {
   try {
-    const context = await fetchBusinessContext();
-    const insights = await generateInsights(context);
-    return NextResponse.json({ insights, summary: context.hoy });
+    const ctx = await fetchBusinessContext();
+    return NextResponse.json({ insights: generateInsights(ctx), summary: ctx.hoy });
   } catch (err: any) {
+    console.error('Gerente IA GET error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
