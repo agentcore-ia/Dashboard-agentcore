@@ -20,13 +20,15 @@ async function fetchBusinessContext() {
   };
 
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    // FIX TZ: Use exact minus hours to avoid UTC midnight crossover issues
+    const now = Date.now();
+    const past24Hours = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const fourteenDaysAgo = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
 
     const [pedidosHoyRes, pedidosMesRes, mesasRes, productosRes] = await Promise.allSettled([
-      supabase.from('pedidos').select('*').gte('created_at', today),
+      supabase.from('pedidos').select('*').gte('created_at', past24Hours),
       supabase.from('pedidos').select('*').gte('created_at', thirtyDaysAgo),
       supabase.from('mesas').select('*'),
       supabase.from('productos').select('*'),
@@ -37,7 +39,7 @@ async function fetchBusinessContext() {
     const mesas: any[] = mesasRes.status === 'fulfilled' ? (mesasRes.value.data || []) : [];
     const productos: any[] = productosRes.status === 'fulfilled' ? (productosRes.value.data || []) : [];
 
-    // Daily stats
+    // Daily stats (last 24 hours to avoid UTC split)
     const ventasHoy = pedidosHoy.reduce((s, p) => s + (Number(p.total) || Number(p.monto) || 0), 0);
     const ticketPromedio = pedidosHoy.length > 0 ? Math.round(ventasHoy / pedidosHoy.length) : 0;
 
@@ -125,7 +127,7 @@ function generateInsights(ctx: Awaited<ReturnType<typeof fetchBusinessContext>>)
     insights.push({ tipo: 'info', mensaje: `${ctx.mesas.ocupadas} mesa${ctx.mesas.ocupadas !== 1 ? 's' : ''} ocupada${ctx.mesas.ocupadas !== 1 ? 's' : ''} ahora` });
 
   if (ctx.hoy.pedidos === 0)
-    insights.push({ tipo: 'warning', mensaje: 'No hay pedidos registrados hoy todavía' });
+    insights.push({ tipo: 'warning', mensaje: 'Pocos pedidos registrados en las últimas 24 hs' });
 
   const diasVentas = Object.entries(ctx.mes.ventasPorDia).sort(([, a], [, b]) => a.total - b.total);
   if (diasVentas.length > 0)
@@ -196,8 +198,21 @@ async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusi
   // Rule-based fallback (always works, uses real data)
   const q = question.toLowerCase();
 
+  // If no AI is available and the query is complex, advise the user.
+  const isBasicQuery = q.includes('ventas') || q.includes('resumen') || q.includes('hoy') || q.includes('día') || 
+                       q.includes('dia') || q.includes('product') || q.includes('promoci') || q.includes('vend') || 
+                       q.includes('popular') || q.includes('mesa') || q.includes('hora') || q.includes('pico') || 
+                       q.includes('tráfico') || q.includes('trafico') || q.includes('semana') || q.includes('seman');
+
+  if (!isBasicQuery) {
+    return `⚠️ **Cerebro Inteligente Apagado**
+    
+Actualmente estoy funcionando en "Modo de Emergencia" (solo datos básicos) porque no pudo conectar a OpenAI o Gemini.
+Intentá hacer preguntas simples como "resumen del día", "top productos" o "mesas libres" o revisa tus tokens de OpenAI en Easypanel (OPENAI_API_KEY).`;
+  }
+
   if (q.includes('ventas') || q.includes('resumen') || q.includes('hoy') || q.includes('día') || q.includes('dia'))
-    return `📊 **Resumen del día**\n\n💰 Ventas: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n📦 Pedidos: ${ctx.hoy.pedidos}\n🎯 Ticket promedio: $${ctx.hoy.ticketPromedio.toLocaleString('es-AR')}\n⏰ Hora pico: ${ctx.hoy.horaPico}\n\n📈 Esta semana vs anterior: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%${ctx.productos.topVentas[0] ? `\n\n🔥 Más vendido del mes: **${ctx.productos.topVentas[0].nombre}** (${ctx.productos.topVentas[0].cantidad} pedidos)` : ''}`;
+    return `📊 **Resumen de las últimas 24 horas**\n\n💰 Ventas: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n📦 Pedidos: ${ctx.hoy.pedidos}\n🎯 Ticket promedio: $${ctx.hoy.ticketPromedio.toLocaleString('es-AR')}\n⏰ Hora pico: ${ctx.hoy.horaPico}\n\n📈 Últimos 7 días vs anterior: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%${ctx.productos.topVentas[0] ? `\n\n🔥 Más vendido: **${ctx.productos.topVentas[0].nombre}** (${ctx.productos.topVentas[0].cantidad} pedidos)` : ''}`;
 
   if (q.includes('product') || q.includes('promoci') || q.includes('vend') || q.includes('popular'))
     return `🏆 **Top productos (último mes)**\n\n${ctx.productos.topVentas.slice(0, 5).map((p, i) => `${i + 1}. ${p.nombre}: ${p.cantidad} pedidos`).join('\n') || 'Sin datos de ventas aún'}\n\n💡 Creá combos o promociones con los más vendidos para aumentar el ticket promedio.`;
@@ -206,12 +221,12 @@ async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusi
     return `🪑 **Estado de mesas**\n\n✅ Ocupadas: ${ctx.mesas.ocupadas}\n⚪ Libres: ${ctx.mesas.libres}\n📊 Total: ${ctx.mesas.total}\n📈 Ocupación: ${ctx.mesas.total > 0 ? Math.round((ctx.mesas.ocupadas / ctx.mesas.total) * 100) : 0}%`;
 
   if (q.includes('hora') || q.includes('pico') || q.includes('tráfico') || q.includes('trafico'))
-    return `⏰ **Análisis horario**\n\nHora pico hoy: ${ctx.hoy.horaPico}\n\n📅 **Ventas por día (último mes):**\n${Object.entries(ctx.mes.ventasPorDia).map(([d, v]) => `• ${d}: ${v.count} pedidos ($${v.total.toLocaleString('es-AR')})`).join('\n') || 'Sin datos aún'}\n\n💡 Identificá los días flojos y creá promos especiales para potenciar esos momentos.`;
+    return `⏰ **Análisis horario**\n\nHora pico (últimas 24hs): ${ctx.hoy.horaPico}\n\n📅 **Ventas por día (último mes):**\n${Object.entries(ctx.mes.ventasPorDia).map(([d, v]) => `• ${d}: ${v.count} pedidos ($${v.total.toLocaleString('es-AR')})`).join('\n') || 'Sin datos aún'}\n\n💡 Identificá los días flojos y creá promos especiales para potenciar esos momentos.`;
 
   if (q.includes('semana') || q.includes('seman'))
-    return `📅 **Resumen semanal**\n\n💰 Ventas esta semana: $${ctx.semana.ventas.toLocaleString('es-AR')}\n📊 Variación vs semana anterior: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%\n\n${ctx.semana.cambio < 0 ? '⚠️ Las ventas bajaron. Considerá activar promociones para recuperar el ritmo.' : ctx.semana.cambio > 10 ? '🚀 Excelente semana! Las ventas crecen.' : '✅ Ventas estables.'}`;
+    return `📅 **Resumen últimos 7 días**\n\n💰 Ventas: $${ctx.semana.ventas.toLocaleString('es-AR')}\n📊 Variación vs semana anterior: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%\n\n${ctx.semana.cambio < 0 ? '⚠️ Las ventas bajaron. Considerá activar promociones para recuperar el ritmo.' : ctx.semana.cambio > 10 ? '🚀 Excelente semana! Las ventas crecen.' : '✅ Ventas estables.'}`;
 
-  return `🤖 Hola! Soy el Gerente IA de tu restaurante.\n\n📊 **Estado actual:**\n• Ventas hoy: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n• Pedidos: ${ctx.hoy.pedidos}\n• Mesas ocupadas: ${ctx.mesas.ocupadas}/${ctx.mesas.total}\n• Variación semanal: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%\n\nPodés preguntarme sobre:\n📊 Ventas del día\n🏆 Productos más vendidos\n🪑 Estado de mesas\n⏰ Horas pico\n📅 Resumen semanal`;
+  return `🤖 Hola! Soy el Gerente IA.\n\n📊 **Estado actual:**\n• Ventas (24hs): $${ctx.hoy.ventas.toLocaleString('es-AR')}\n• Pedidos (24hs): ${ctx.hoy.pedidos}\n• Mesas: ${ctx.mesas.ocupadas}/${ctx.mesas.total}\n• Crecimiento semanal: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%`;
 }
 
 // ── POST ──────────────────────────────────────────────────
