@@ -1,35 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
-// ── Safe Supabase context fetch (never throws) ────────────
+// ── Same Supabase config used by the rest of the app ──────
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://eqnjyygokjinmsfvogxi.supabase.co';
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxbmp5eWdva2ppbm1zZnZvZ3hpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2NzcxMjEsImV4cCI6MjA4OTI1MzEyMX0.BrVsESdtgMBnPjfZfwreg7PWg-HIgiLO5-QoN0qqbkE';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── Fetch business context ────────────────────────────────
 async function fetchBusinessContext() {
   const empty = {
     hoy: { ventas: 0, pedidos: 0, ticketPromedio: 0, horaPico: 'Sin datos' },
     semana: { ventas: 0, cambio: 0 },
     mes: { pedidos: 0, ventasPorDia: {} as Record<string, { total: number; count: number }> },
     mesas: { ocupadas: 0, libres: 0, total: 0 },
-    productos: { total: 0, topVentas: [] as Array<{ nombre: string; cantidad: number }>, catalogo: [] },
+    productos: { total: 0, topVentas: [] as Array<{ nombre: string; cantidad: number }>, catalogo: [] as any[] },
   };
 
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !supabaseKey) return empty;
-
-    const { createClient } = await import('@supabase/supabase-js');
-    const sb = createClient(supabaseUrl, supabaseKey);
-
     const today = new Date().toISOString().split('T')[0];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
     const [pedidosHoyRes, pedidosMesRes, mesasRes, productosRes] = await Promise.allSettled([
-      sb.from('pedidos').select('*').gte('created_at', today),
-      sb.from('pedidos').select('*').gte('created_at', thirtyDaysAgo),
-      sb.from('mesas').select('*'),
-      sb.from('productos').select('*'),
+      supabase.from('pedidos').select('*').gte('created_at', today),
+      supabase.from('pedidos').select('*').gte('created_at', thirtyDaysAgo),
+      supabase.from('mesas').select('*'),
+      supabase.from('productos').select('*'),
     ]);
 
     const pedidosHoy: any[] = pedidosHoyRes.status === 'fulfilled' ? (pedidosHoyRes.value.data || []) : [];
@@ -37,9 +37,11 @@ async function fetchBusinessContext() {
     const mesas: any[] = mesasRes.status === 'fulfilled' ? (mesasRes.value.data || []) : [];
     const productos: any[] = productosRes.status === 'fulfilled' ? (productosRes.value.data || []) : [];
 
+    // Daily stats
     const ventasHoy = pedidosHoy.reduce((s, p) => s + (Number(p.total) || Number(p.monto) || 0), 0);
     const ticketPromedio = pedidosHoy.length > 0 ? Math.round(ventasHoy / pedidosHoy.length) : 0;
 
+    // Hour peak
     const ventasPorHora: Record<number, number> = {};
     pedidosHoy.forEach((p) => {
       const h = new Date(p.created_at).getHours();
@@ -48,6 +50,7 @@ async function fetchBusinessContext() {
     const horaPicoEntry = Object.entries(ventasPorHora).sort(([, a], [, b]) => b - a)[0];
     const horaPico = horaPicoEntry ? `${horaPicoEntry[0]}:00hs (${horaPicoEntry[1]} pedidos)` : 'Sin datos';
 
+    // Day of week distribution
     const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
     const ventasPorDia: Record<string, { total: number; count: number }> = {};
     pedidosMes.forEach((p) => {
@@ -57,6 +60,7 @@ async function fetchBusinessContext() {
       ventasPorDia[d].count += 1;
     });
 
+    // Top products from order items
     const productCount: Record<string, number> = {};
     pedidosMes.forEach((p) => {
       const items = Array.isArray(p.items) ? p.items : Array.isArray(p.productos) ? p.productos : [];
@@ -70,13 +74,15 @@ async function fetchBusinessContext() {
       .slice(0, 10)
       .map(([nombre, cantidad]) => ({ nombre, cantidad }));
 
+    // Weekly comparison
     const ventasSemana = pedidosMes
       .filter((p) => p.created_at >= sevenDaysAgo)
       .reduce((s, p) => s + (Number(p.total) || Number(p.monto) || 0), 0);
     const ventasSemanaAnt = pedidosMes
       .filter((p) => p.created_at >= fourteenDaysAgo && p.created_at < sevenDaysAgo)
       .reduce((s, p) => s + (Number(p.total) || Number(p.monto) || 0), 0);
-    const cambio = ventasSemanaAnt > 0 ? Math.round(((ventasSemana - ventasSemanaAnt) / ventasSemanaAnt) * 100) : 0;
+    const cambio = ventasSemanaAnt > 0
+      ? Math.round(((ventasSemana - ventasSemanaAnt) / ventasSemanaAnt) * 100) : 0;
 
     return {
       hoy: { ventas: ventasHoy, pedidos: pedidosHoy.length, ticketPromedio, horaPico },
@@ -90,7 +96,11 @@ async function fetchBusinessContext() {
       productos: {
         total: productos.length,
         topVentas,
-        catalogo: productos.slice(0, 20).map((p) => ({ nombre: p.name || p.nombre, precio: p.price || p.precio })),
+        catalogo: productos.slice(0, 20).map((p) => ({
+          nombre: p.name || p.nombre,
+          precio: p.price || p.precio,
+          categoria: p.category || p.categoria,
+        })),
       },
     };
   } catch (e) {
@@ -100,15 +110,27 @@ async function fetchBusinessContext() {
 }
 
 // ── Auto insights ─────────────────────────────────────────
-function generateInsights(ctx: { semana: { cambio: number }; productos: { topVentas: Array<{nombre:string;cantidad:number}> }; mesas: { ocupadas: number }; hoy: { pedidos: number }; mes: { ventasPorDia: Record<string,{total:number;count:number}> } }) {
+function generateInsights(ctx: Awaited<ReturnType<typeof fetchBusinessContext>>) {
   const insights: Array<{ tipo: string; mensaje: string }> = [];
-  if (ctx.semana.cambio < -10) insights.push({ tipo: 'warning', mensaje: `Ventas bajaron ${Math.abs(ctx.semana.cambio)}% vs semana anterior` });
-  else if (ctx.semana.cambio > 15) insights.push({ tipo: 'trend', mensaje: `Ventas crecieron ${ctx.semana.cambio}% vs semana anterior 🚀` });
-  if (ctx.productos.topVentas.length > 0) insights.push({ tipo: 'trend', mensaje: `Tendencia: ${ctx.productos.topVentas[0].nombre} (${ctx.productos.topVentas[0].cantidad} pedidos este mes)` });
-  if (ctx.mesas.ocupadas > 0) insights.push({ tipo: 'info', mensaje: `${ctx.mesas.ocupadas} mesa${ctx.mesas.ocupadas !== 1 ? 's' : ''} ocupada${ctx.mesas.ocupadas !== 1 ? 's' : ''} ahora` });
-  if (ctx.hoy.pedidos === 0) insights.push({ tipo: 'warning', mensaje: 'No hay pedidos registrados hoy todavía' });
+
+  if (ctx.semana.cambio < -10)
+    insights.push({ tipo: 'warning', mensaje: `Ventas bajaron ${Math.abs(ctx.semana.cambio)}% vs semana anterior` });
+  else if (ctx.semana.cambio > 15)
+    insights.push({ tipo: 'trend', mensaje: `Ventas crecieron ${ctx.semana.cambio}% vs semana anterior 🚀` });
+
+  if (ctx.productos.topVentas.length > 0)
+    insights.push({ tipo: 'trend', mensaje: `Tendencia: ${ctx.productos.topVentas[0].nombre} (${ctx.productos.topVentas[0].cantidad} pedidos este mes)` });
+
+  if (ctx.mesas.ocupadas > 0)
+    insights.push({ tipo: 'info', mensaje: `${ctx.mesas.ocupadas} mesa${ctx.mesas.ocupadas !== 1 ? 's' : ''} ocupada${ctx.mesas.ocupadas !== 1 ? 's' : ''} ahora` });
+
+  if (ctx.hoy.pedidos === 0)
+    insights.push({ tipo: 'warning', mensaje: 'No hay pedidos registrados hoy todavía' });
+
   const diasVentas = Object.entries(ctx.mes.ventasPorDia).sort(([, a], [, b]) => a.total - b.total);
-  if (diasVentas.length > 0) insights.push({ tipo: 'info', mensaje: `Día con menos ventas del mes: ${diasVentas[0][0]}` });
+  if (diasVentas.length > 0)
+    insights.push({ tipo: 'info', mensaje: `Día con menos ventas del mes: ${diasVentas[0][0]}` });
+
   return insights;
 }
 
@@ -123,10 +145,12 @@ async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusi
     mesas: ctx.mesas,
     topProductos: ctx.productos.topVentas.slice(0, 5),
     ventasPorDia: ctx.mes.ventasPorDia,
+    totalProductosCatalogo: ctx.productos.total,
   });
 
-  const systemPrompt = `Eres el Gerente IA de un restaurante argentino. Analizás datos del negocio y das respuestas claras, directas y accionables en español rioplatense. Usá emojis para facilitar la lectura. Incluí números reales, comparaciones y recomendaciones concretas. Datos actuales: ${ctxStr}. Respondé de forma estructurada, máximo 300 palabras.`;
+  const systemPrompt = `Eres el Gerente IA de un restaurante argentino. Analizás datos reales del negocio y das respuestas claras, directas y accionables en español rioplatense. Usá emojis para facilitar la lectura. Incluí números reales, comparaciones y recomendaciones concretas. Datos actuales del restaurante: ${ctxStr}. Respondé de forma estructurada, máximo 300 palabras.`;
 
+  // Try Gemini first
   if (geminiKey) {
     try {
       const res = await fetch(
@@ -146,6 +170,7 @@ async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusi
     } catch (e) { console.error('Gemini error:', e); }
   }
 
+  // Try OpenAI
   if (openaiKey) {
     try {
       const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -164,26 +189,29 @@ async function callAI(question: string, ctx: Awaited<ReturnType<typeof fetchBusi
       const data = await res.json();
       const text = data?.choices?.[0]?.message?.content;
       if (text) return text;
-      // Log OpenAI error detail
-      console.error('OpenAI response error:', JSON.stringify(data));
+      console.error('OpenAI issue:', JSON.stringify(data));
     } catch (e) { console.error('OpenAI fetch error:', e); }
   }
 
-  // Rule-based fallback (always works)
+  // Rule-based fallback (always works, uses real data)
   const q = question.toLowerCase();
-  if (q.includes('ventas') || q.includes('resumen') || q.includes('hoy') || q.includes('día'))
-    return `📊 **Resumen del día**\n\n💰 Ventas: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n📦 Pedidos: ${ctx.hoy.pedidos}\n🎯 Ticket promedio: $${ctx.hoy.ticketPromedio.toLocaleString('es-AR')}\n⏰ Hora pico: ${ctx.hoy.horaPico}\n\n📈 Esta semana: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}% vs semana anterior\n${ctx.productos.topVentas[0] ? `\n🔥 Más vendido: **${ctx.productos.topVentas[0].nombre}** (${ctx.productos.topVentas[0].cantidad} pedidos)` : ''}`;
 
-  if (q.includes('producto') || q.includes('promoci') || q.includes('vend'))
-    return `🏆 **Top productos (último mes)**\n\n${ctx.productos.topVentas.slice(0, 5).map((p, i) => `${i + 1}. ${p.nombre}: ${p.cantidad} pedidos`).join('\n') || 'Sin datos aún'}\n\n💡 Destacá tus productos más vendidos y creá combos para subir el ticket promedio.`;
+  if (q.includes('ventas') || q.includes('resumen') || q.includes('hoy') || q.includes('día') || q.includes('dia'))
+    return `📊 **Resumen del día**\n\n💰 Ventas: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n📦 Pedidos: ${ctx.hoy.pedidos}\n🎯 Ticket promedio: $${ctx.hoy.ticketPromedio.toLocaleString('es-AR')}\n⏰ Hora pico: ${ctx.hoy.horaPico}\n\n📈 Esta semana vs anterior: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%${ctx.productos.topVentas[0] ? `\n\n🔥 Más vendido del mes: **${ctx.productos.topVentas[0].nombre}** (${ctx.productos.topVentas[0].cantidad} pedidos)` : ''}`;
+
+  if (q.includes('product') || q.includes('promoci') || q.includes('vend') || q.includes('popular'))
+    return `🏆 **Top productos (último mes)**\n\n${ctx.productos.topVentas.slice(0, 5).map((p, i) => `${i + 1}. ${p.nombre}: ${p.cantidad} pedidos`).join('\n') || 'Sin datos de ventas aún'}\n\n💡 Creá combos o promociones con los más vendidos para aumentar el ticket promedio.`;
 
   if (q.includes('mesa'))
     return `🪑 **Estado de mesas**\n\n✅ Ocupadas: ${ctx.mesas.ocupadas}\n⚪ Libres: ${ctx.mesas.libres}\n📊 Total: ${ctx.mesas.total}\n📈 Ocupación: ${ctx.mesas.total > 0 ? Math.round((ctx.mesas.ocupadas / ctx.mesas.total) * 100) : 0}%`;
 
-  if (q.includes('hora') || q.includes('pico'))
-    return `⏰ **Análisis horario**\n\n🕐 Hora pico hoy: ${ctx.hoy.horaPico}\n\n📅 **Ventas por día (último mes):**\n${Object.entries(ctx.mes.ventasPorDia).map(([d, v]) => `• ${d}: ${v.count} pedidos ($${v.total.toLocaleString('es-AR')})`).join('\n') || 'Sin datos aún'}\n\n💡 Identificá los días flojos y creá promos especiales para esos momentos.`;
+  if (q.includes('hora') || q.includes('pico') || q.includes('tráfico') || q.includes('trafico'))
+    return `⏰ **Análisis horario**\n\nHora pico hoy: ${ctx.hoy.horaPico}\n\n📅 **Ventas por día (último mes):**\n${Object.entries(ctx.mes.ventasPorDia).map(([d, v]) => `• ${d}: ${v.count} pedidos ($${v.total.toLocaleString('es-AR')})`).join('\n') || 'Sin datos aún'}\n\n💡 Identificá los días flojos y creá promos especiales para potenciar esos momentos.`;
 
-  return `🤖 Hola! Soy el Gerente IA.\n\n📊 **Resumen rápido:**\n• Ventas hoy: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n• Pedidos: ${ctx.hoy.pedidos}\n• Mesas ocupadas: ${ctx.mesas.ocupadas}/${ctx.mesas.total}\n\nPodés preguntarme sobre ventas, productos, mesas, horas pico o pedirme un resumen del día.`;
+  if (q.includes('semana') || q.includes('seman'))
+    return `📅 **Resumen semanal**\n\n💰 Ventas esta semana: $${ctx.semana.ventas.toLocaleString('es-AR')}\n📊 Variación vs semana anterior: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%\n\n${ctx.semana.cambio < 0 ? '⚠️ Las ventas bajaron. Considerá activar promociones para recuperar el ritmo.' : ctx.semana.cambio > 10 ? '🚀 Excelente semana! Las ventas crecen.' : '✅ Ventas estables.'}`;
+
+  return `🤖 Hola! Soy el Gerente IA de tu restaurante.\n\n📊 **Estado actual:**\n• Ventas hoy: $${ctx.hoy.ventas.toLocaleString('es-AR')}\n• Pedidos: ${ctx.hoy.pedidos}\n• Mesas ocupadas: ${ctx.mesas.ocupadas}/${ctx.mesas.total}\n• Variación semanal: ${ctx.semana.cambio > 0 ? '+' : ''}${ctx.semana.cambio}%\n\nPodés preguntarme sobre:\n📊 Ventas del día\n🏆 Productos más vendidos\n🪑 Estado de mesas\n⏰ Horas pico\n📅 Resumen semanal`;
 }
 
 // ── POST ──────────────────────────────────────────────────
@@ -202,9 +230,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ answer, insights, context: { hoy: ctx.hoy, semana: ctx.semana } });
   } catch (err: any) {
     console.error('Gerente IA POST error:', err);
-    // Return a graceful answer even on unexpected errors
     return NextResponse.json({
-      answer: `⚠️ Hubo un error interno: ${err.message}. Intentá de nuevo en unos segundos.`,
+      answer: `⚠️ Error inesperado: ${err.message}. Intentá de nuevo en unos segundos.`,
       insights: [],
     });
   }
@@ -215,7 +242,7 @@ export async function GET() {
   try {
     const ctx = await fetchBusinessContext();
     return NextResponse.json({ insights: generateInsights(ctx), summary: ctx.hoy });
-  } catch (err: any) {
+  } catch {
     return NextResponse.json({ insights: [], summary: null });
   }
 }
