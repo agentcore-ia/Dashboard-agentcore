@@ -206,12 +206,11 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
 
       if (pedidoError) throw pedidoError;
 
-      const itemSubtotal = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
-      const itemTotal = itemSubtotal;
+
 
       const items = orderItems.map(item => ({
         pedido_id: pedido.id,
-        product_id: item.product_id || null,
+        product_id: null,        // null: productos vienen de Sheets, no de tabla products
         name: item.name,
         price: item.price,
         quantity: item.quantity,
