@@ -48,6 +48,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const [closeAccountSuccess, setCloseAccountSuccess] = useState(false);
   const [tableOrders, setTableOrders] = useState<any[]>([]);
   const [closePaymentMethod, setClosePaymentMethod] = useState<PaymentMethod>("cash");
+  const [sentOrders, setSentOrders] = useState<any[]>([]);
+  const [loadingSentOrders, setLoadingSentOrders] = useState(false);
 
   const fetchTables = async () => {
     const { data, error } = await supabase.from('mesas').select('*');
@@ -87,6 +89,18 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
     } catch (e) {
       console.error("Error fetching products:", e);
     }
+  };
+
+  const fetchSentOrders = async (tableId: string) => {
+    setLoadingSentOrders(true);
+    const { data } = await supabase
+      .from('pedidos')
+      .select('*, items_pedido(*)')
+      .eq('table_id', tableId)
+      .not('status', 'in', '(cancelled,completed)')
+      .order('created_at', { ascending: true });
+    setSentOrders(data || []);
+    setLoadingSentOrders(false);
   };
 
   useEffect(() => {
@@ -129,6 +143,17 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const discountAmount = Math.round(subtotalAmount * discount / 100);
   const totalAmount = subtotalAmount - discountAmount;
 
+  // Load sent orders when a table is selected
+  useEffect(() => {
+    if (selectedTableId) {
+      const t = derivedTables.find(t => t.id === selectedTableId);
+      if (t?.status === 'occupied') fetchSentOrders(selectedTableId);
+      else setSentOrders([]);
+    } else {
+      setSentOrders([]);
+    }
+  }, [selectedTableId]);
+
   const updateTableStatus = async (
     id: string, status: "free" | "occupied" | "reserved",
     extras?: Partial<Table>,
@@ -169,9 +194,9 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           delivery_type: 'salon',
           payment_method: null,
           source: 'salon',
-          subtotal: subtotalAmount,
+          subtotal: orderItems.reduce((s, i) => s + i.price * i.quantity, 0),
           delivery_fee: 0,
-          total: totalAmount,
+          total: orderItems.reduce((s, i) => s + i.price * i.quantity, 0),
           table_id: selectedTable.id,
           table_name: selectedTable.name,
           notes: discount > 0 ? `Descuento ${discount}%` : null,
@@ -181,9 +206,12 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
 
       if (pedidoError) throw pedidoError;
 
+      const itemSubtotal = orderItems.reduce((s, i) => s + i.price * i.quantity, 0);
+      const itemTotal = itemSubtotal;
+
       const items = orderItems.map(item => ({
         pedido_id: pedido.id,
-        product_id: null,
+        product_id: item.product_id || null,
         name: item.name,
         price: item.price,
         quantity: item.quantity,
@@ -218,6 +246,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
       });
 
       setCheckoutSuccess(true);
+      // Reload sent orders for the panel
+      await fetchSentOrders(selectedTable.id);
       setTimeout(() => {
         setIsCheckoutOpen(false);
         setIsMenuDrawerOpen(false);
@@ -505,26 +535,62 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                     <div className="px-5 pt-3 pb-2">
                       <div className="flex justify-between items-center mb-3">
                         <span className="text-[10px] font-black uppercase tracking-widest text-stone-400">Detalle de consumo</span>
-                        <span className="text-[10px] font-bold text-stone-400">{(selectedTable.current_order_items || []).reduce((a, i) => a + i.quantity, 0)} ítems</span>
+                        <span className="text-[10px] font-bold text-stone-400">
+                          {sentOrders.reduce((a: number, o: any) => a + (o.items_pedido || []).reduce((b: number, i: any) => b + i.quantity, 0), 0) +
+                           (selectedTable.current_order_items || []).reduce((a, i) => a + i.quantity, 0)} ítems
+                        </span>
                       </div>
-                      {(selectedTable.current_order_items || []).length === 0 ? (
+
+                      {/* Pedidos ya enviados a cocina */}
+                      {loadingSentOrders ? (
+                        <p className="text-sm text-stone-400 text-center py-2">Cargando...</p>
+                      ) : sentOrders.length === 0 && (selectedTable.current_order_items || []).length === 0 ? (
                         <p className="text-sm text-stone-400 text-center py-4">Sin productos</p>
                       ) : (
-                        <div className="flex flex-col gap-2">
-                          {(selectedTable.current_order_items || []).map(item => (
-                            <div key={item.id} className="flex items-center gap-2 py-2 border-b border-stone-50">
-                              <span className="w-6 h-6 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-black shrink-0">{item.quantity}</span>
-                              <p className="flex-1 text-sm font-semibold text-stone-700 truncate">{item.name}</p>
-                              <p className="text-sm font-black text-stone-800">${((item.price || 0) * item.quantity).toLocaleString('es-AR')}</p>
+                        <div className="flex flex-col gap-3">
+                          {sentOrders.map((order: any, idx: number) => (
+                            <div key={order.id} className="mb-1">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Pedido #{idx + 1} ✓</span>
+                              </div>
+                              {(order.items_pedido || []).map((item: any) => (
+                                <div key={item.id} className="flex items-center gap-2 py-1.5 border-b border-stone-50">
+                                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-black shrink-0">{item.quantity}</span>
+                                  <p className="flex-1 text-sm font-semibold text-stone-600 truncate">{item.name}</p>
+                                  <p className="text-sm font-black text-stone-700">${((item.price || 0) * item.quantity).toLocaleString('es-AR')}</p>
+                                </div>
+                              ))}
                             </div>
                           ))}
+
+                          {/* Ítems pendientes en el buffer (aún no enviados) */}
+                          {(selectedTable.current_order_items || []).length > 0 && (
+                            <div className="mb-1">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Sin enviar</span>
+                              </div>
+                              {(selectedTable.current_order_items || []).map(item => (
+                                <div key={item.id} className="flex items-center gap-2 py-1.5 border-b border-stone-50">
+                                  <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-black shrink-0">{item.quantity}</span>
+                                  <p className="flex-1 text-sm font-semibold text-stone-600 truncate">{item.name}</p>
+                                  <p className="text-sm font-black text-stone-700">${((item.price || 0) * item.quantity).toLocaleString('es-AR')}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
 
                     <div className="px-5 py-3 border-t border-dashed border-stone-200 flex justify-between items-center">
-                      <span className="text-xs font-black uppercase tracking-widest text-stone-400">Total a pagar</span>
-                      <span className="text-2xl font-black text-red-700">${(selectedTable.current_bill || 0).toLocaleString('es-AR')}</span>
+                      <span className="text-xs font-black uppercase tracking-widest text-stone-400">Total acumulado</span>
+                      <span className="text-2xl font-black text-red-700">
+                        ${(() => {
+                          const sentTotal = sentOrders.reduce((a: number, o: any) => a + (o.total || 0), 0);
+                          const bufferTotal = selectedTable.current_bill || 0;
+                          return (sentTotal + bufferTotal).toLocaleString('es-AR');
+                        })()}
+                      </span>
                     </div>
 
                     <div className="px-5 py-2 border-t border-stone-100">
@@ -565,7 +631,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                       </div>
 
                       <button
-                        onClick={() => setIsCheckoutOpen(true)}
+                        onClick={() => procesarCobro()}
                         disabled={(selectedTable.current_order_items || []).length === 0}
                         className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md shadow-green-900/20 active:scale-95 transition-all"
                       >
@@ -789,7 +855,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
           products={products}
           initialCategory={activeCategory}
           onClose={() => setIsMenuDrawerOpen(false)}
-          onCobrar={() => { setIsMenuDrawerOpen(false); setIsCheckoutOpen(true); }}
+          onCobrar={() => { setIsMenuDrawerOpen(false); procesarCobro(); }}
           onSave={(newItems, bill) =>
             updateTableStatus(selectedTable.id, selectedTable.status, {
               current_order_items: newItems,
