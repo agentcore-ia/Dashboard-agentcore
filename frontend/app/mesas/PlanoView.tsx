@@ -164,7 +164,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         .from('pedidos')
         .insert({
           restaurant_id: RESTAURANT_ID,
-          customer_name: selectedTable.current_client || 'Cliente Salón',
+          customer_name: `Salón Mesa: ${selectedTable.name}`,
           status: 'new',
           delivery_type: 'salon',
           payment_method: null,
