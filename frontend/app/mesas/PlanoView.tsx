@@ -44,6 +44,11 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
   const [checkoutSuccess, setCheckoutSuccess] = useState(false);
   const [discount, setDiscount] = useState<number>(0);
 
+  const [isClosingAccount, setIsClosingAccount] = useState(false);
+  const [closeAccountSuccess, setCloseAccountSuccess] = useState(false);
+  const [tableOrders, setTableOrders] = useState<any[]>([]);
+  const [closePaymentMethod, setClosePaymentMethod] = useState<PaymentMethod>("cash");
+
   const fetchTables = async () => {
     const { data, error } = await supabase.from('mesas').select('*');
     if (!error && data) setTables(data as Table[]);
@@ -147,6 +152,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
     updateTableStatus(tableId, tableStatus, { current_bill: 0, current_order_items: [] });
   };
 
+  // Envía los productos actuales a cocina y mantiene la mesa ocupada
   const procesarCobro = async () => {
     if (!selectedTable) return;
     const orderItems = selectedTable.current_order_items || [];
@@ -159,9 +165,9 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         .insert({
           restaurant_id: RESTAURANT_ID,
           customer_name: selectedTable.current_client || 'Cliente Salón',
-          status: 'completed',
+          status: 'new',
           delivery_type: 'salon',
-          payment_method: paymentMethod,
+          payment_method: null,
           source: 'salon',
           subtotal: subtotalAmount,
           delivery_fee: 0,
@@ -187,20 +193,19 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
       const { error: itemsError } = await supabase.from('items_pedido').insert(items);
       if (itemsError) throw itemsError;
 
+      // Mesa SIGUE OCUPADA — solo se limpian los ítems enviados para poder seguir agregando
       await supabase.from('mesas').update({
-        status: 'free',
-        current_client: null,
-        time_elapsed: null,
-        current_bill: null,
+        current_bill: 0,
         current_order_items: [],
       }).eq('id', selectedTable.id);
 
       setTables(prev => prev.map(t =>
         t.id === selectedTable.id
-          ? { ...t, status: 'free', current_client: null, time_elapsed: null, current_bill: null, current_order_items: [] }
+          ? { ...t, current_bill: 0, current_order_items: [] }
           : t
       ));
 
+      // Imprime solo la comanda de los productos enviados ahora
       printTicket({
         tableName: selectedTable.name,
         clientName: selectedTable.current_client,
@@ -209,7 +214,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         discount,
         discountAmount,
         total: totalAmount,
-        paymentMethod,
+        paymentMethod: 'cash',
       });
 
       setCheckoutSuccess(true);
@@ -217,14 +222,111 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         setIsCheckoutOpen(false);
         setIsMenuDrawerOpen(false);
         setCheckoutSuccess(false);
-        setSelectedTableId(null);
+        // La mesa queda abierta para seguir agregando
         setDiscount(0);
         setPaymentMethod("cash");
       }, 2000);
 
     } catch (err) {
-      console.error("Error al procesar cobro:", err);
-      alert("Error al registrar el cobro. Intente nuevamente.");
+      console.error("Error al enviar pedido:", err);
+      alert("Error al enviar el pedido. Intente nuevamente.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Abre el modal de cierre de cuenta con todos los pedidos de la mesa
+  const abrirCuentaFinal = async () => {
+    if (!selectedTable) return;
+    const { data, error } = await supabase
+      .from('pedidos')
+      .select('*, items_pedido(*)')
+      .eq('table_id', selectedTable.id)
+      .not('status', 'in', '(cancelled,completed)')
+      .order('created_at', { ascending: true });
+    if (!error && data) setTableOrders(data);
+    setIsClosingAccount(true);
+  };
+
+  // Cierra la cuenta: marca todos los pedidos como completados y libera la mesa
+  const cerrarCuenta = async () => {
+    if (!selectedTable) return;
+    setIsProcessing(true);
+    try {
+      const orderIds = tableOrders.map((o: any) => o.id);
+      if (orderIds.length > 0) {
+        await supabase.from('pedidos')
+          .update({ status: 'completed', payment_method: closePaymentMethod })
+          .in('id', orderIds);
+      }
+
+      // También procesar ítems actuales si los hay
+      const pendingItems = selectedTable.current_order_items || [];
+      if (pendingItems.length > 0) {
+        const pendingTotal = pendingItems.reduce((s: number, i: OrderItem) => s + i.price * i.quantity, 0);
+        const { data: lastPedido } = await supabase.from('pedidos').insert({
+          restaurant_id: RESTAURANT_ID,
+          customer_name: selectedTable.current_client || 'Cliente Salón',
+          status: 'completed',
+          delivery_type: 'salon',
+          payment_method: closePaymentMethod,
+          source: 'salon',
+          subtotal: pendingTotal,
+          delivery_fee: 0,
+          total: pendingTotal,
+          table_id: selectedTable.id,
+          table_name: selectedTable.name,
+        }).select('id').single();
+        if (lastPedido) {
+          await supabase.from('items_pedido').insert(
+            pendingItems.map((item: OrderItem) => ({ pedido_id: lastPedido.id, product_id: null, name: item.name, price: item.price, quantity: item.quantity }))
+          );
+        }
+      }
+
+      // Liberar la mesa
+      await supabase.from('mesas').update({
+        status: 'free', current_client: null, time_elapsed: null, current_bill: null, current_order_items: [],
+      }).eq('id', selectedTable.id);
+      setTables(prev => prev.map(t =>
+        t.id === selectedTable.id
+          ? { ...t, status: 'free', current_client: null, time_elapsed: null, current_bill: null, current_order_items: [] }
+          : t
+      ));
+
+      // Ticket final con todos los ítems
+      const allItems: { name: string; quantity: number; price: number }[] = [];
+      tableOrders.forEach((order: any) => {
+        (order.items_pedido || []).forEach((item: any) => {
+          allItems.push({ name: item.name, quantity: item.quantity, price: item.price });
+        });
+      });
+      pendingItems.forEach((i: OrderItem) => allItems.push({ name: i.name, quantity: i.quantity, price: i.price }));
+      const grandTotal = tableOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
+        + pendingItems.reduce((s: number, i: OrderItem) => s + i.price * i.quantity, 0);
+
+      printTicket({
+        tableName: selectedTable.name,
+        clientName: selectedTable.current_client,
+        items: allItems,
+        subtotal: grandTotal,
+        discount: 0,
+        discountAmount: 0,
+        total: grandTotal,
+        paymentMethod: closePaymentMethod,
+      });
+
+      setCloseAccountSuccess(true);
+      setTimeout(() => {
+        setIsClosingAccount(false);
+        setCloseAccountSuccess(false);
+        setSelectedTableId(null);
+        setClosePaymentMethod("cash");
+        setTableOrders([]);
+      }, 2500);
+    } catch (err) {
+      console.error("Error al cerrar cuenta:", err);
+      alert("Error al cerrar la cuenta. Intente nuevamente.");
     } finally {
       setIsProcessing(false);
     }
@@ -467,8 +569,16 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                         disabled={(selectedTable.current_order_items || []).length === 0}
                         className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 text-sm shadow-md shadow-green-900/20 active:scale-95 transition-all"
                       >
-                        <span className="material-symbols-outlined text-[18px]">payments</span>
-                        Cerrar y cobrar
+                        <span className="material-symbols-outlined text-[18px]">send</span>
+                        Mandar pedido
+                      </button>
+
+                      <button
+                        onClick={abrirCuentaFinal}
+                        className="w-full bg-stone-800 hover:bg-stone-900 border border-stone-300 text-stone-700 py-3.5 rounded-xl font-black flex items-center justify-center gap-2 text-sm active:scale-95 transition-all"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                        Cerrar cuenta
                       </button>
                     </div>
                   </div>
@@ -580,7 +690,7 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
         </div>
       )}
 
-      {/* CHECKOUT MODAL */}
+      {/* CHECKOUT MODAL - Mandar pedido a cocina */}
       {isCheckoutOpen && selectedTable && (
         <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-in fade-in p-0 sm:p-4">
           <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200">
@@ -590,14 +700,14 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center mb-4">
                   <span className="material-symbols-outlined text-white text-[48px]">check_circle</span>
                 </div>
-                <p className="text-white font-black text-2xl">¡Cobro registrado!</p>
-                <p className="text-white/70 text-sm mt-1">{selectedTable.name} · ${totalAmount.toLocaleString('es-AR')}</p>
+                <p className="text-white font-black text-2xl">¡Pedido enviado a cocina!</p>
+                <p className="text-white/70 text-sm mt-1">{selectedTable.name} · Podés seguir agregando productos</p>
               </div>
             )}
 
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-stone-100">
               <div>
-                <h3 className="text-xl font-black text-stone-800">Cobrar cuenta</h3>
+                <h3 className="text-xl font-black text-stone-800">Mandar pedido</h3>
                 <p className="text-xs text-stone-400 font-medium mt-0.5">{selectedTable.name} · {selectedTable.current_client}</p>
               </div>
               <button onClick={() => { setIsCheckoutOpen(false); setDiscount(0); }} className="w-9 h-9 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400 transition-colors">
@@ -650,17 +760,6 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                 </div>
               </div>
 
-              <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Método de pago</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-                {paymentMethods.map(pm => (
-                  <button key={pm.id} onClick={() => setPaymentMethod(pm.id)}
-                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 font-bold text-xs transition-all active:scale-95 ${paymentMethod === pm.id ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'}`}>
-                    <span className={`material-symbols-outlined text-[22px] ${paymentMethod === pm.id ? 'text-white' : 'text-stone-500'}`}>{pm.icon}</span>
-                    {pm.label}
-                  </button>
-                ))}
-              </div>
-
               <button onClick={procesarCobro} disabled={isProcessing}
                 className="w-full h-16 rounded-2xl font-black text-lg flex items-center justify-center gap-3 bg-emerald-700 hover:bg-emerald-800 text-white transition-all active:scale-[0.98] disabled:opacity-60 shadow-lg shadow-green-900/20 mb-4">
                 {isProcessing ? (
@@ -673,8 +772,8 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
                   </>
                 ) : (
                   <>
-                    <span className="material-symbols-outlined text-2xl">payments</span>
-                    Confirmar cobro · ${totalAmount.toLocaleString('es-AR')}
+                    <span className="material-symbols-outlined text-2xl">send</span>
+                    Confirmar pedido · ${totalAmount.toLocaleString('es-AR')}
                   </>
                 )}
               </button>
@@ -698,6 +797,111 @@ export default function PlanoView({ selectedDate }: { selectedDate: Date }) {
             })
           }
         />
+      )}
+
+      {/* CERRAR CUENTA MODAL */}
+      {isClosingAccount && selectedTable && (
+        <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-in fade-in p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-200 relative">
+
+            {closeAccountSuccess && (
+              <div className="absolute inset-0 bg-stone-900 flex flex-col items-center justify-center z-10 animate-in fade-in">
+                <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mb-4">
+                  <span className="material-symbols-outlined text-white text-[48px]">check_circle</span>
+                </div>
+                <p className="text-white font-black text-2xl">¡Cuenta cerrada!</p>
+                <p className="text-white/60 text-sm mt-1">{selectedTable.name} · Ticket impreso</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-stone-100">
+              <div>
+                <h3 className="text-xl font-black text-stone-800">Cerrar cuenta</h3>
+                <p className="text-xs text-stone-400 font-medium mt-0.5">{selectedTable.name} · {selectedTable.current_client}</p>
+              </div>
+              <button onClick={() => { setIsClosingAccount(false); setTableOrders([]); }} className="w-9 h-9 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400 transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <div className="px-6 py-4 overflow-y-auto max-h-[70vh]">
+              {/* Pedidos anteriores */}
+              {tableOrders.length > 0 && (
+                <div className="bg-stone-50 rounded-2xl p-4 mb-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Pedidos enviados</p>
+                  <div className="flex flex-col gap-3 max-h-48 overflow-y-auto">
+                    {tableOrders.map((order: any, idx: number) => (
+                      <div key={order.id}>
+                        <p className="text-[10px] font-black text-stone-400 uppercase tracking-wider mb-1">Pedido #{idx + 1}</p>
+                        {(order.items_pedido || []).map((item: any) => (
+                          <div key={item.id} className="flex items-center justify-between text-sm py-0.5">
+                            <span className="text-stone-600">{item.quantity}x {item.name}</span>
+                            <span className="font-bold text-stone-800">${((item.price || 0) * item.quantity).toLocaleString('es-AR')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Ítems pendientes aún no enviados */}
+              {(selectedTable.current_order_items || []).length > 0 && (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mb-4">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-2">Ítems sin mandar</p>
+                  {(selectedTable.current_order_items || []).map((item: OrderItem) => (
+                    <div key={item.id} className="flex items-center justify-between text-sm py-0.5">
+                      <span className="text-stone-600">{item.quantity}x {item.name}</span>
+                      <span className="font-bold text-stone-800">${((item.price || 0) * item.quantity).toLocaleString('es-AR')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Total final */}
+              {(() => {
+                const grandT = tableOrders.reduce((s: number, o: any) => s + (o.total || 0), 0)
+                  + (selectedTable.current_order_items || []).reduce((s: number, i: OrderItem) => s + i.price * i.quantity, 0);
+                return (
+                  <div className="bg-stone-900 rounded-2xl p-4 mb-4 flex items-center justify-between">
+                    <span className="text-sm font-black uppercase tracking-widest text-stone-400">TOTAL FINAL</span>
+                    <span className="text-4xl font-black text-white">${grandT.toLocaleString('es-AR')}</span>
+                  </div>
+                );
+              })()}
+
+              {/* Método de pago */}
+              <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Método de pago</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+                {paymentMethods.map(pm => (
+                  <button key={pm.id} onClick={() => setClosePaymentMethod(pm.id)}
+                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 font-bold text-xs transition-all active:scale-95 ${closePaymentMethod === pm.id ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'}`}>
+                    <span className={`material-symbols-outlined text-[22px] ${closePaymentMethod === pm.id ? 'text-white' : 'text-stone-500'}`}>{pm.icon}</span>
+                    {pm.label}
+                  </button>
+                ))}
+              </div>
+
+              <button onClick={cerrarCuenta} disabled={isProcessing}
+                className="w-full h-16 rounded-2xl font-black text-lg flex items-center justify-center gap-3 bg-stone-900 hover:bg-stone-800 text-white transition-all active:scale-[0.98] disabled:opacity-60 shadow-lg mb-4">
+                {isProcessing ? (
+                  <>
+                    <svg className="animate-spin w-5 h-5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Procesando...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-2xl">receipt_long</span>
+                    Cobrar y cerrar mesa
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
