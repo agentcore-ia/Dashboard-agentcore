@@ -60,65 +60,90 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
     return()=>window.removeEventListener("keydown",h);
   },[items,undo]);
 
-  const Btn = ({label,onClick,cls}:{label:string;onClick:()=>void;cls?:string}) => (
-    <button onClick={onClick} className={`shrink-0 h-10 px-4 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-75 active:scale-90 ${cls}`}>{label}</button>
-  );
-
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-stone-950">
+    <div className="fixed inset-0 z-[100] flex flex-col lg:flex-row bg-stone-100">
 
-      {/* ── LEFT: CATALOG ── */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+      {/* LEFT: CATALOG */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-stone-100">
 
         {/* topbar */}
-        <div className="flex items-center gap-2 px-3 py-2 bg-stone-900 border-b border-stone-800 shrink-0">
-          <button onClick={onClose} className="w-9 h-9 rounded-lg bg-stone-800 hover:bg-stone-700 flex items-center justify-center text-stone-300 active:scale-90 transition-all shrink-0">
+        <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-stone-200 shrink-0 shadow-sm">
+          <button onClick={onClose} className="w-9 h-9 rounded-xl bg-stone-100 hover:bg-stone-200 flex items-center justify-center text-stone-600 active:scale-90 transition-all shrink-0 border border-stone-200">
             <span className="material-symbols-outlined text-[20px]">arrow_back</span>
           </button>
           <div className="flex flex-col leading-none shrink-0">
-            <span className="font-black text-white text-base">{table.name}</span>
-            {table.time_elapsed && <span className="text-[11px] text-stone-500">{table.time_elapsed}</span>}
+            <span className="font-black text-stone-800 text-base">{table.name}</span>
+            {table.time_elapsed && <span className="text-[11px] text-stone-400 font-medium mt-0.5">{table.time_elapsed}</span>}
           </div>
-          <div className="flex-1 flex items-center gap-1.5 bg-stone-800 rounded-lg px-3 h-9">
-            <span className="material-symbols-outlined text-stone-500 text-[16px]">search</span>
-            <input ref={searchRef} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar… (F)" className="flex-1 bg-transparent text-white text-sm outline-none placeholder:text-stone-600"/>
-            {search && <button onClick={()=>setSearch("")}><span className="material-symbols-outlined text-stone-500 text-[14px]">close</span></button>}
+          <div className="flex-1 flex items-center gap-2 bg-stone-100 border border-stone-200 rounded-xl px-3 h-10">
+            <span className="material-symbols-outlined text-stone-400 text-[18px]">search</span>
+            <input ref={searchRef} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar… (F)" className="flex-1 bg-transparent text-stone-700 text-sm outline-none placeholder:text-stone-400"/>
+            {search && <button onClick={()=>setSearch("")}><span className="material-symbols-outlined text-stone-400 text-[16px]">close</span></button>}
           </div>
-          {count>0 && <span className="bg-emerald-700 text-white font-black text-xs px-2.5 py-1.5 rounded-lg shrink-0">{count} ítem{count!==1?"s":""}</span>}
+          {count>0 && (
+            <span className="bg-red-700 text-white font-black text-xs px-3 py-1.5 rounded-lg shrink-0 shadow-sm">
+              {count} ítem{count!==1?"s":""}
+            </span>
+          )}
         </div>
 
         {/* categories */}
-        <div className="flex items-center gap-2 px-3 py-2.5 bg-stone-950 border-b border-stone-800 overflow-x-auto shrink-0 hide-scroll sticky top-0 z-20">
-          <Btn label="TODAS" onClick={()=>setCat(null)} cls={!cat?"bg-emerald-500 text-stone-950 scale-105 shadow-md shadow-emerald-900/30":"bg-stone-800 text-stone-400 hover:bg-stone-700"}/>
-          {cats.map(c=><Btn key={c} label={c.toUpperCase()} onClick={()=>setCat(cat===c?null:c)} cls={cat===c?"bg-emerald-500 text-stone-950 scale-105 shadow-md shadow-emerald-900/30":"bg-stone-800 text-stone-400 hover:bg-stone-700"}/>)}
+        <div className="flex items-center gap-2 px-4 py-3 bg-white border-b border-stone-200 overflow-x-auto shrink-0 hide-scroll">
+          <button onClick={()=>setCat(null)}
+            className={`shrink-0 h-9 px-4 rounded-full font-black text-xs uppercase tracking-wider transition-all duration-75 active:scale-90 ${!cat?"bg-red-700 text-white shadow-md shadow-red-900/20":"bg-stone-100 text-stone-500 hover:bg-stone-200 border border-stone-200"}`}>
+            Todas
+          </button>
+          {cats.map(c=>(
+            <button key={c} onClick={()=>setCat(cat===c?null:c)}
+              className={`shrink-0 h-9 px-4 rounded-full font-black text-xs uppercase tracking-wider transition-all duration-75 active:scale-90 ${cat===c?"bg-red-700 text-white shadow-md shadow-red-900/20":"bg-stone-100 text-stone-500 hover:bg-stone-200 border border-stone-200"}`}>
+              {c}
+            </button>
+          ))}
         </div>
 
         {/* quick actions */}
         {(lastProd||undo) && (
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-900 border-b border-stone-800 shrink-0">
-            {lastProd && <button onClick={()=>add(lastProd)} className="flex items-center gap-1 h-7 px-2.5 bg-amber-700 hover:bg-amber-600 text-white rounded-lg text-xs font-bold active:scale-95 transition-all"><span className="material-symbols-outlined text-[13px]">replay</span>Repetir: {lastProd.name}</button>}
-            {undo && <button onClick={doUndo} className="flex items-center gap-1 h-7 px-2.5 bg-stone-700 hover:bg-stone-600 text-white rounded-lg text-xs font-bold active:scale-95 transition-all"><span className="material-symbols-outlined text-[13px]">undo</span>Deshacer</button>}
+          <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-100 shrink-0">
+            {lastProd && (
+              <button onClick={()=>add(lastProd)} className="flex items-center gap-1.5 h-8 px-3 bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold active:scale-95 transition-all">
+                <span className="material-symbols-outlined text-[14px]">replay</span>
+                Repetir: {lastProd.name}
+              </button>
+            )}
+            {undo && (
+              <button onClick={doUndo} className="flex items-center gap-1.5 h-8 px-3 bg-stone-100 hover:bg-stone-200 text-stone-600 border border-stone-200 rounded-lg text-xs font-bold active:scale-95 transition-all">
+                <span className="material-symbols-outlined text-[14px]">undo</span>
+                Deshacer
+              </button>
+            )}
           </div>
         )}
 
         {/* product grid */}
-        <div className="flex-1 overflow-y-auto p-2.5 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
           {filtered.length===0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-stone-700"><span className="material-symbols-outlined text-[40px] mb-2">search_off</span><span className="font-bold text-sm">Sin resultados</span></div>
+            <div className="flex flex-col items-center justify-center h-full text-stone-400">
+              <span className="material-symbols-outlined text-[40px] mb-2">search_off</span>
+              <span className="font-bold text-sm">Sin resultados</span>
+            </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-1.5">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
               {filtered.map(p=>{
                 const inCart=items.find(i=>i.product_id===p.id);
                 const flash=flashId===p.id;
                 return (
                   <button key={p.id} onClick={()=>add(p)}
-                    className={`relative flex flex-col justify-between text-left rounded-xl p-2 transition-all duration-75 active:scale-[0.85] select-none border-2 focus:outline-none
-                      ${flash?"bg-emerald-500 border-emerald-400 scale-[0.95] shadow-lg shadow-emerald-500/20":inCart?"bg-stone-800 border-emerald-600/50 hover:border-emerald-500":"bg-stone-900 border-stone-800 hover:border-stone-600 hover:bg-stone-800"}`}
-                    style={{minHeight:"68px"}}>
-                    {inCart && <div className="absolute -top-2 -right-2 w-6 h-6 bg-emerald-500 text-stone-950 text-[11px] font-black rounded-full flex items-center justify-center shadow-md z-10 border-2 border-stone-900">{inCart.quantity}</div>}
-                    {(mu[p.id]||0)>2&&!inCart && <div className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500"/>}
-                    <span className={`font-bold text-[11px] leading-tight line-clamp-2 ${flash?"text-stone-950":"text-stone-200"}`}>{p.name}</span>
-                    <span className={`font-black text-xs ${flash?"text-stone-900":"text-emerald-400"}`}>{fmt(p.price||0)}</span>
+                    className={`relative flex flex-col justify-between text-left rounded-2xl p-3 transition-all duration-75 active:scale-[0.88] select-none border-2 focus:outline-none shadow-sm
+                      ${flash?"bg-red-700 border-red-600 scale-[0.95] shadow-lg shadow-red-900/20":inCart?"bg-white border-red-300 shadow-md":"bg-white border-stone-200 hover:border-stone-300 hover:shadow-md"}`}
+                    style={{minHeight:"76px"}}>
+                    {inCart && (
+                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-700 text-white text-[11px] font-black rounded-full flex items-center justify-center shadow-md z-10 border-2 border-stone-100">
+                        {inCart.quantity}
+                      </div>
+                    )}
+                    {(mu[p.id]||0)>2&&!inCart && <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-amber-400"/>}
+                    <span className={`font-bold text-[12px] leading-tight line-clamp-2 ${flash?"text-white":"text-stone-700"}`}>{p.name}</span>
+                    <span className={`font-black text-sm mt-1 ${flash?"text-red-100":"text-red-700"}`}>{fmt(p.price||0)}</span>
                   </button>
                 );
               })}
@@ -127,33 +152,38 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
         </div>
       </div>
 
-      {/* ── RIGHT: COMANDA ── */}
-      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col bg-stone-900 border-l border-stone-800 shrink-0 max-h-[48vh] lg:max-h-full">
+      {/* RIGHT: COMANDA */}
+      <div className="w-full lg:w-[380px] xl:w-[420px] flex flex-col bg-white border-l border-stone-200 shrink-0 max-h-[48vh] lg:max-h-full shadow-xl">
 
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-stone-800 shrink-0">
-          <div>
-            <span className="font-black text-white">Comanda</span>
-            <span className={`ml-2 text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${items.length>0?"bg-emerald-900 text-emerald-400":"bg-stone-800 text-stone-600"}`}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-stone-100 shrink-0 bg-white">
+          <div className="flex items-center gap-2">
+            <span className="font-black text-stone-800 text-base">Comanda</span>
+            <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider ${items.length>0?"bg-red-100 text-red-700":"bg-stone-100 text-stone-400"}`}>
               {items.length>0?"En curso":"Vacía"}
             </span>
           </div>
-          {items.length>0 && <button onClick={clear} className="text-stone-700 hover:text-red-400 text-xs flex items-center gap-1 transition-colors"><span className="material-symbols-outlined text-[13px]">delete_sweep</span>Limpiar</button>}
+          {items.length>0 && (
+            <button onClick={clear} className="text-stone-400 hover:text-red-600 text-xs flex items-center gap-1 transition-colors font-bold">
+              <span className="material-symbols-outlined text-[14px]">delete_sweep</span>
+              Limpiar
+            </button>
+          )}
         </div>
 
-        <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar px-2 py-2 flex flex-col gap-2">
+        <div ref={listRef} className="flex-1 overflow-y-auto custom-scrollbar px-3 py-3 flex flex-col gap-2">
           {items.length===0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-stone-700 select-none py-6">
-              <span className="material-symbols-outlined text-[48px] mb-2">receipt_long</span>
-              <span className="font-bold text-sm">Cuenta vacía</span>
-              <span className="text-xs text-stone-600 mt-1">Tocá un producto para agregar</span>
+            <div className="flex flex-col items-center justify-center h-full text-stone-300 select-none py-8">
+              <span className="material-symbols-outlined text-[52px] mb-3">receipt_long</span>
+              <span className="font-bold text-sm text-stone-400">Comanda vacía</span>
+              <span className="text-xs text-stone-300 mt-1">Tocá un producto para agregar</span>
             </div>
           ) : items.map((item,idx)=>{
             const isLast=idx===items.length-1;
             return (
-              <div key={item.id} className={`rounded-xl p-2.5 transition-colors border ${isLast?"border-emerald-500 bg-emerald-950/20 shadow-lg":"border-stone-800 bg-stone-900"}`}>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex flex-col items-center gap-1 shrink-0 bg-stone-950 p-1 rounded-lg border border-stone-800">
-                    <button onClick={()=>chQty(item.id,1)} className="w-9 h-7 rounded-md bg-emerald-700 hover:bg-emerald-600 active:scale-95 flex items-center justify-center text-white transition-all">
+              <div key={item.id} className={`rounded-2xl p-3 transition-all border-2 ${isLast?"border-red-200 bg-red-50/50 shadow-sm":"border-stone-100 bg-stone-50/50"}`}>
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-center gap-1 shrink-0">
+                    <button onClick={()=>chQty(item.id,1)} className="w-9 h-8 rounded-xl bg-red-700 hover:bg-red-800 active:scale-95 flex items-center justify-center text-white transition-all shadow-sm">
                       <span className="material-symbols-outlined text-[18px]">add</span>
                     </button>
                     {editQty?.id===item.id ? (
@@ -161,40 +191,39 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
                         onChange={e=>setEditQty({id:item.id,val:e.target.value})}
                         onBlur={()=>{setQty(item.id,parseInt(editQty.val)||1);setEditQty(null);}}
                         onKeyDown={e=>{if(e.key==="Enter"){setQty(item.id,parseInt(editQty.val)||1);setEditQty(null);}if(e.key==="Escape")setEditQty(null);}}
-                        className="w-9 h-7 text-center bg-stone-800 text-emerald-400 text-sm font-black rounded-md outline-none focus:ring-1 focus:ring-emerald-500"/>
+                        className="w-9 h-7 text-center bg-white text-red-700 text-sm font-black rounded-lg outline-none focus:ring-2 focus:ring-red-300 border border-stone-200"/>
                     ) : (
-                      <button onClick={()=>setEditQty({id:item.id,val:String(item.quantity)})} className="w-9 h-6 text-center font-black text-white text-[15px] hover:text-emerald-400 transition-colors">
+                      <button onClick={()=>setEditQty({id:item.id,val:String(item.quantity)})} className="w-9 h-7 text-center font-black text-stone-700 text-[15px] hover:text-red-700 transition-colors">
                         {item.quantity}
                       </button>
                     )}
-                    <button onClick={()=>chQty(item.id,-1)} className="w-9 h-7 rounded-md bg-stone-800 hover:bg-stone-700 active:scale-95 flex items-center justify-center text-stone-300 transition-all">
+                    <button onClick={()=>chQty(item.id,-1)} className="w-9 h-8 rounded-xl bg-stone-200 hover:bg-stone-300 active:scale-95 flex items-center justify-center text-stone-600 transition-all">
                       <span className="material-symbols-outlined text-[18px]">remove</span>
                     </button>
                   </div>
-                  
+
                   <div className="flex-1 min-w-0 px-2 flex flex-col justify-center">
-                    <p className={`font-bold text-sm leading-tight truncate ${isLast?"text-white":"text-stone-200"}`}>{item.name}</p>
-                    <span className="font-black text-emerald-400 text-[13px] mt-0.5">{fmt((item.price||0))} <span className="opacity-50 text-[10px] font-bold">c/u</span></span>
-                    
+                    <p className={`font-bold text-sm leading-tight truncate ${isLast?"text-stone-800":"text-stone-700"}`}>{item.name}</p>
+                    <span className="font-black text-red-700 text-[13px] mt-0.5">{fmt(item.price||0)} <span className="opacity-50 text-[10px] font-bold">c/u</span></span>
                     {editNote?.id===item.id ? (
                       <input autoFocus type="text" value={editNote.val} maxLength={60}
                         onChange={e=>setEditNote({id:item.id,val:e.target.value})}
                         onBlur={()=>{setNote(item.id,editNote.val);setEditNote(null);}}
                         onKeyDown={e=>{if(e.key==="Enter"){setNote(item.id,editNote.val);setEditNote(null);}if(e.key==="Escape")setEditNote(null);}}
                         placeholder="Sin cebolla..."
-                        className="mt-2 w-full bg-stone-950 text-amber-400 text-xs px-2 py-1.5 rounded-md outline-none border border-amber-900/50 placeholder:text-stone-700"/>
+                        className="mt-2 w-full bg-amber-50 text-amber-700 text-xs px-2 py-1.5 rounded-lg outline-none border border-amber-200 placeholder:text-amber-300"/>
                     ) : (
-                      <button onClick={()=>setEditNote({id:item.id,val:item.note||""})} className={`mt-1.5 text-left text-xs font-semibold truncate transition-colors w-full rounded p-1 -ml-1 ${item.note?'text-amber-400 bg-amber-950/30 hover:bg-amber-950/50':'text-stone-600 hover:text-stone-400 hover:bg-stone-800'}`}>
-                        {item.note ? `📝 ${item.note}` : "＋ Agregar nota"}
+                      <button onClick={()=>setEditNote({id:item.id,val:item.note||""})} className={`mt-1.5 text-left text-xs font-semibold truncate transition-colors w-full rounded-lg p-1 -ml-1 ${item.note?'text-amber-600 bg-amber-50 hover:bg-amber-100':'text-stone-400 hover:text-stone-500 hover:bg-stone-100'}`}>
+                        {item.note ? `📝 ${item.note}` : "+ Agregar nota"}
                       </button>
                     )}
                   </div>
-                  
+
                   <div className="flex flex-col items-end gap-2 shrink-0">
-                    <button onClick={()=>rm(item.id)} className="w-8 h-8 rounded-lg bg-stone-800/50 text-stone-500 hover:text-red-400 hover:bg-red-950/50 active:scale-90 flex items-center justify-center transition-all">
-                      <span className="material-symbols-outlined text-[18px]">delete</span>
+                    <button onClick={()=>rm(item.id)} className="w-8 h-8 rounded-xl bg-stone-100 text-stone-400 hover:text-red-600 hover:bg-red-50 active:scale-90 flex items-center justify-center transition-all border border-stone-200">
+                      <span className="material-symbols-outlined text-[17px]">delete</span>
                     </button>
-                    <span className="font-black text-white text-base mt-auto">{fmt((item.price||0)*item.quantity)}</span>
+                    <span className="font-black text-stone-800 text-base mt-auto">{fmt((item.price||0)*item.quantity)}</span>
                   </div>
                 </div>
               </div>
@@ -202,25 +231,33 @@ export default function POSDrawer({ table, products, initialCategory, onClose, o
           })}
         </div>
 
-        {/* sticky bottom */}
-        <div className="border-t-2 border-stone-800 p-4 bg-stone-950 shrink-0">
-          <div className="flex justify-between items-end mb-3">
+        {/* bottom bar */}
+        <div className="border-t border-stone-200 p-4 bg-white shrink-0">
+          <div className="flex justify-between items-end mb-4">
             <div className="flex flex-col">
-              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 mb-0.5">TOTAL COMANDA</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-0.5">TOTAL COMANDA</span>
               <span className="text-sm font-bold text-stone-400">{count} ítem{count!==1?"s":""}</span>
             </div>
-            <span className="text-[40px] leading-none font-black text-white tracking-tighter">{fmt(total)}</span>
+            <span className="text-[38px] leading-none font-black text-stone-800 tracking-tighter">{fmt(total)}</span>
           </div>
+
           <button onClick={onCobrar} disabled={items.length===0}
-            className="w-full h-16 rounded-2xl font-black text-xl flex items-center justify-center gap-3 transition-all duration-75 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-900/20 mb-3">
-            <span className="material-symbols-outlined text-[28px]">payments</span>
-            COBRAR
+            className="w-full h-14 rounded-2xl font-black text-base flex items-center justify-center gap-2.5 transition-all duration-75 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed bg-emerald-700 hover:bg-emerald-800 text-white shadow-lg shadow-emerald-900/20 mb-2.5">
+            <span className="material-symbols-outlined text-[22px]">send</span>
+            MANDAR PEDIDO
             <kbd className="text-xs font-bold opacity-60 border-2 border-white/20 px-1.5 py-0.5 rounded-md ml-1">ENTER</kbd>
           </button>
-          <div className="flex items-center justify-center gap-4 text-[11px] font-bold text-stone-600">
-            <span className="flex items-center gap-1"><kbd className="border border-stone-800 px-1 rounded text-stone-500">ESC</kbd> Volver</span>
-            <span className="flex items-center gap-1"><kbd className="border border-stone-800 px-1 rounded text-stone-500">F</kbd> Buscar</span>
-            <span className="flex items-center gap-1"><kbd className="border border-stone-800 px-1 rounded text-stone-500">Ctrl+Z</kbd> Deshacer</span>
+
+          <button onClick={onClose}
+            className="w-full h-12 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all duration-75 active:scale-[0.97] bg-stone-100 hover:bg-stone-200 text-stone-600 border border-stone-200 mb-3">
+            <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+            CERRAR
+          </button>
+
+          <div className="flex items-center justify-center gap-4 text-[11px] font-bold text-stone-400">
+            <span className="flex items-center gap-1"><kbd className="border border-stone-200 px-1 rounded text-stone-400 bg-stone-50">ESC</kbd> Volver</span>
+            <span className="flex items-center gap-1"><kbd className="border border-stone-200 px-1 rounded text-stone-400 bg-stone-50">F</kbd> Buscar</span>
+            <span className="flex items-center gap-1"><kbd className="border border-stone-200 px-1 rounded text-stone-400 bg-stone-50">Ctrl+Z</kbd> Deshacer</span>
           </div>
         </div>
       </div>
